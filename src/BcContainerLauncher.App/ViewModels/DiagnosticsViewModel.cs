@@ -87,13 +87,15 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
             return;
         }
 
+        IsRunning = true;
         vm.IsFixing = true;
+        StatusText = $"Wende Fix '{vm.Name}' an … (kann beim Erst-Bootstrap einige Sekunden dauern)";
         try
         {
             var ok = await _setup.ApplyFixAsync(vm.FixId);
             StatusText = ok
                 ? $"Fix '{vm.Name}' angewendet — bitte neu prüfen."
-                : $"Fix '{vm.Name}' fehlgeschlagen.";
+                : $"Fix '{vm.Name}' fehlgeschlagen — siehe Log-Tab.";
         }
         catch (Exception ex)
         {
@@ -103,18 +105,45 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
         finally
         {
             vm.IsFixing = false;
+            IsRunning = false;
         }
     }
 
     [RelayCommand(CanExecute = nameof(CanFixAll))]
     private async Task FixAllAsync()
     {
-        var fixable = Checks.Where(c => c.IsFixable && !string.IsNullOrEmpty(c.FixId)).ToList();
-        foreach (var vm in fixable)
+        IsRunning = true;
+        try
         {
-            await FixAsync(vm);
+            var fixable = Checks.Where(c => c.IsFixable && !string.IsNullOrEmpty(c.FixId)).ToList();
+            int done = 0;
+            foreach (var vm in fixable)
+            {
+                StatusText = $"Fix {++done}/{fixable.Count}: {vm.Name} …";
+                vm.IsFixing = true;
+                try
+                {
+                    var ok = await _setup.ApplyFixAsync(vm.FixId!);
+                    if (!ok)
+                    {
+                        _logger.LogWarning("Fix {FixId} hat false zurückgegeben", vm.FixId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Fix {FixId} geworfen", vm.FixId);
+                }
+                finally
+                {
+                    vm.IsFixing = false;
+                }
+            }
+            StatusText = $"{fixable.Count} Fix(es) versucht. Bitte 'Alle prüfen' erneut ausführen.";
         }
-        StatusText = $"{fixable.Count} Fix(es) versucht. Bitte 'Alle prüfen' erneut ausführen.";
+        finally
+        {
+            IsRunning = false;
+        }
     }
 
     private bool CanRun() => !IsRunning;
@@ -123,6 +152,8 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
 
     partial void OnIsRunningChanged(bool value)
     {
+        RunAllCommand.NotifyCanExecuteChanged();
+        FixAllCommand.NotifyCanExecuteChanged();
         FixCommand.NotifyCanExecuteChanged();
     }
 }

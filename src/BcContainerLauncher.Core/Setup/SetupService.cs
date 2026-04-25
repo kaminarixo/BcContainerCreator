@@ -59,8 +59,23 @@ public sealed class SetupService : ISetupService
 
         return fixId switch
         {
-            "set-execution-policy" =>
-                "Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force",
+            // Group-Policy oder LocalMachine-Override kann CurrentUser-Set verhindern
+            // (Security error). Wir versuchen CurrentUser, fallen still auf Process
+            // zurück — was für unsere Zwecke (PSResource-Installs) ausreicht.
+            "set-execution-policy" => """
+                $changed = $false
+                try {
+                    Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force -ErrorAction Stop
+                    Write-Information 'ExecutionPolicy CurrentUser=RemoteSigned'
+                    $changed = $true
+                } catch {
+                    Write-Warning ("CurrentUser-Set fehlgeschlagen ({0}). Versuche Scope=Process." -f $_.Exception.Message)
+                }
+                if (-not $changed) {
+                    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction Stop
+                    Write-Information 'ExecutionPolicy Process=Bypass'
+                }
+                """,
 
             // PowerShellGet 1.0.0.1 (vom Windows-PowerShell-5.1-Pfad) ist mit
             // PS7-In-Process-SDK inkompatibel und wirft '$script:IsWindows' /
@@ -97,35 +112,47 @@ public sealed class SetupService : ISetupService
     /// unter PS7-In-Process komplett.
     /// </summary>
     private static string EnsurePSResourceGetScript() => """
-        if (-not (Get-Command Install-PSResource -ErrorAction SilentlyContinue)) {
+        $InformationPreference = 'Continue'
+
+        if (Get-Command Install-PSResource -ErrorAction SilentlyContinue) {
+            Write-Information 'PSResourceGet bereits geladen.'
+        } else {
+            Write-Information 'Suche installierte Microsoft.PowerShell.PSResourceGet ...'
             $existing = Get-Module -ListAvailable -Name Microsoft.PowerShell.PSResourceGet -ErrorAction SilentlyContinue |
                         Sort-Object Version -Descending | Select-Object -First 1
             if ($existing) {
+                Write-Information ("Import {0} v{1}" -f $existing.Name, $existing.Version)
                 Import-Module $existing -Force -ErrorAction Stop
             }
         }
 
         if (-not (Get-Command Install-PSResource -ErrorAction SilentlyContinue)) {
-            Write-Information 'Microsoft.PowerShell.PSResourceGet wird aus PSGallery nachinstalliert...'
-
+            Write-Information 'Bootstrap-Download Microsoft.PowerShell.PSResourceGet aus PSGallery startet ...'
             $version  = '1.1.1'
             $tmpDir   = Join-Path $env:TEMP "bccl-psresget-$([Guid]::NewGuid().ToString('N'))"
             New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
 
             try {
+                # TLS 1.2 erzwingen (manche Hosts haben Default 1.0/1.1).
+                try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
+
                 $nupkg = Join-Path $tmpDir 'psresourceget.nupkg'
                 $url   = "https://www.powershellgallery.com/api/v2/package/Microsoft.PowerShell.PSResourceGet/$version"
                 $oldProgress = $ProgressPreference
                 $ProgressPreference = 'SilentlyContinue'
+                Write-Information "Download $url ..."
                 try {
-                    Invoke-WebRequest -Uri $url -OutFile $nupkg -UseBasicParsing -ErrorAction Stop
+                    Invoke-WebRequest -Uri $url -OutFile $nupkg -UseBasicParsing -TimeoutSec 60 -ErrorAction Stop
                 } finally {
                     $ProgressPreference = $oldProgress
                 }
+                $size = (Get-Item $nupkg).Length
+                Write-Information ("Download fertig: {0:N0} bytes" -f $size)
 
                 Add-Type -AssemblyName System.IO.Compression.FileSystem
                 $extractDir = Join-Path $tmpDir 'extracted'
                 [System.IO.Compression.ZipFile]::ExtractToDirectory($nupkg, $extractDir)
+                Write-Information 'Entpackt.'
 
                 $userModuleRoot = Join-Path $env:USERPROFILE "Documents\PowerShell\Modules\Microsoft.PowerShell.PSResourceGet\$version"
                 if (Test-Path $userModuleRoot) {
@@ -143,6 +170,7 @@ public sealed class SetupService : ISetupService
                 }
 
                 Import-Module $psd1 -Force -ErrorAction Stop
+                Write-Information 'PSResourceGet importiert.'
             } finally {
                 Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
             }

@@ -254,6 +254,20 @@ public sealed class PowerShellRunner : IPowerShellRunner
             return;
         }
 
+        // Auch nach Serilog spiegeln, damit man bei Hängern im Log sieht,
+        // wo das Skript steht.
+        var level = type switch
+        {
+            PSStreamType.Error => LogLevel.Error,
+            PSStreamType.Warning => LogLevel.Warning,
+            PSStreamType.Information => LogLevel.Information,
+            PSStreamType.Verbose => LogLevel.Debug,
+            PSStreamType.Debug => LogLevel.Debug,
+            PSStreamType.Progress => LogLevel.Debug,
+            _ => LogLevel.Trace
+        };
+        _logger.Log(level, "PS[{Stream}] {Message}", type, message);
+
         try
         {
             OutputReceived?.Invoke(this, new PowerShellOutputEventArgs(type, message));
