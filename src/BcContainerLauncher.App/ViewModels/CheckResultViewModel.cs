@@ -27,6 +27,12 @@ public sealed partial class CheckResultViewModel : ObservableObject
     [ObservableProperty]
     private bool _isFixing;
 
+    [ObservableProperty]
+    private bool _requiresAdminForFix;
+
+    [ObservableProperty]
+    private string? _helpUrl;
+
     public void Apply(CheckResult result)
     {
         Name = result.Name;
@@ -34,5 +40,7 @@ public sealed partial class CheckResultViewModel : ObservableObject
         Message = result.Message;
         IsFixable = result.IsFixable;
         FixId = result.FixId;
+        RequiresAdminForFix = result.RequiresAdminForFix;
+        HelpUrl = result.HelpUrl;
     }
 }

@@ -86,6 +86,7 @@ public partial class App : Application
                 services.AddSingleton<IPowerShellRunner, PowerShellRunner>();
                 services.AddSingleton<IDockerService, DockerService>();
                 services.AddSingleton<IPreflightCheck, PreflightCheck>();
+                services.AddSingleton<IElevationService, ElevationService>();
                 services.AddSingleton<ISetupService, SetupService>();
                 services.AddSingleton<IContainerService, ContainerService>();
 

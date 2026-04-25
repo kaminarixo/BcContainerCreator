@@ -10,4 +10,6 @@ public sealed record CheckResult(
     string Message,
     bool IsFixable = false,
     string? FixId = null,
-    string? Details = null);
+    string? Details = null,
+    bool RequiresAdminForFix = false,
+    string? HelpUrl = null);

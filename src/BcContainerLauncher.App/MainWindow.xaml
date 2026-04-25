@@ -49,20 +49,22 @@
                                Margin="0,2,0,0" />
                 </StackPanel>
 
-                <!-- Phase-/Status-Pill rechts -->
+                <!-- Status-Pill rechts: zeigt ob die App als Admin oder Standard-User läuft -->
                 <Border Grid.Column="2"
                         VerticalAlignment="Center"
-                        Padding="10,4"
-                        CornerRadius="3"
+                        Padding="12,6"
+                        CornerRadius="14"
                         Background="#262626">
                     <StackPanel Orientation="Horizontal">
-                        <Ellipse Width="8" Height="8"
+                        <Ellipse x:Name="ContextDot"
+                                 Width="9" Height="9"
                                  Fill="{StaticResource BrandOrange}"
                                  VerticalAlignment="Center"
                                  Margin="0,0,8,0" />
-                        <TextBlock Text="Phase 1 — PoC"
-                                   Foreground="#CFCFCF"
-                                   FontSize="11"
+                        <TextBlock x:Name="ContextLabel"
+                                   Text="Standard-User"
+                                   Foreground="#EAEAEA"
+                                   FontSize="12"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center" />
                     </StackPanel>

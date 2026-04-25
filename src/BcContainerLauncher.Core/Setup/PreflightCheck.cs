@@ -71,25 +71,16 @@ public sealed class PreflightCheck : IPreflightCheck
 
     private Task<CheckResult> CheckAdminAsync(CancellationToken _)
     {
-        // Synchroner Check, aber als Task gewrappt für einheitliches Pattern.
-        bool isAdmin;
-        try
-        {
-            using var identity = WindowsIdentity.GetCurrent();
-            var principal = new WindowsPrincipal(identity);
-            isAdmin = principal.IsInRole(WindowsBuiltInRole.Administrator);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Admin-Check fehlgeschlagen");
-            isAdmin = false;
-        }
-
+        // Informativ. Die App läuft als asInvoker — nur einzelne Aktionen
+        // (Docker-Modus-Switch) brauchen wirklich Admin und werden dann
+        // on-demand via Verb=runas elevated.
+        var isAdmin = AdminContext.IsCurrentProcessAdmin;
         return Task.FromResult(new CheckResult(
-            Name: "Admin-Rechte",
-            Status: isAdmin ? CheckStatus.Ok : CheckStatus.Failed,
-            Message: isAdmin ? "Prozess läuft als Administrator." : "Bitte als Administrator starten.",
-            IsFixable: false));
+            Name: "Ausführungs-Kontext",
+            Status: CheckStatus.Ok,
+            Message: isAdmin
+                ? "Prozess läuft mit Admin-Rechten."
+                : "Standard-User. Admin-pflichtige Aktionen fragen via UAC nach (lokaler Admin, z. B. .\\admin)."));
     }
 
     private async Task<CheckResult> CheckPSVersionAsync(CancellationToken ct)
@@ -175,8 +166,9 @@ public sealed class PreflightCheck : IPreflightCheck
         return new CheckResult(
             Name: "Docker installiert",
             Status: ok ? CheckStatus.Ok : CheckStatus.Failed,
-            Message: ok ? "Docker-CLI im PATH." : "Docker nicht gefunden — bitte Docker Desktop installieren.",
-            IsFixable: false);
+            Message: ok ? "Docker-CLI im PATH." : "Docker Desktop fehlt — bitte herunterladen und installieren (Admin nötig).",
+            IsFixable: false,
+            HelpUrl: "https://docs.docker.com/desktop/install/windows-install/");
     }
 
     private async Task<CheckResult> CheckDockerRunningAsync(CancellationToken ct)
@@ -196,8 +188,8 @@ public sealed class PreflightCheck : IPreflightCheck
         {
             ContainerMode.Windows => new CheckResult("Docker im Windows-Modus", CheckStatus.Ok, "Windows-Container aktiv."),
             ContainerMode.Linux => new CheckResult("Docker im Windows-Modus", CheckStatus.Failed,
-                "Aktuell: Linux-Container — BC-Container brauchen Windows-Modus.",
-                IsFixable: true, FixId: "switch-to-windows-mode"),
+                "Aktuell: Linux-Container — BC-Container brauchen Windows-Modus. Fix erfordert UAC (lokaler Admin).",
+                IsFixable: true, FixId: "switch-to-windows-mode", RequiresAdminForFix: true),
             _ => new CheckResult("Docker im Windows-Modus", CheckStatus.Warning, "Modus konnte nicht erkannt werden.")
         };
     }

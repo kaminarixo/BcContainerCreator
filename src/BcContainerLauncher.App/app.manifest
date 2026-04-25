@@ -5,8 +5,11 @@
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
-        <!-- Admin-Rechte sind Pflicht: Docker-Steuerung und PSGallery-Installation. -->
-        <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
+        <!-- App startet als normaler User. Admin wird nur on-demand für die wenigen
+             tatsächlich erhöhten Operationen (Docker-Modus-Switch, Service-Installs)
+             via Verb="runas" angefordert — Standard-Setup im Betrieb hat keinen
+             Domänen-Admin und der lokale Anwender ist kein Admin. -->
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
       </requestedPrivileges>
     </security>
   </trustInfo>

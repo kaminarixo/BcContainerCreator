@@ -1,5 +1,7 @@
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using BcContainerLauncher.Core.Setup;
 
 namespace BcContainerLauncher.App;
 
@@ -9,6 +11,21 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         TryLoadBrandAssets();
+        ApplyContextBadge();
+    }
+
+    private void ApplyContextBadge()
+    {
+        if (AdminContext.IsCurrentProcessAdmin)
+        {
+            ContextLabel.Text = "Admin-Modus";
+            ContextDot.Fill = new SolidColorBrush(Color.FromRgb(0x2E, 0xA0, 0x4F)); // grün
+        }
+        else
+        {
+            ContextLabel.Text = "Standard-User";
+            ContextDot.Fill = new SolidColorBrush(Color.FromRgb(0xE6, 0xA8, 0x00)); // gelb
+        }
     }
 
     /// <summary>

@@ -12,6 +12,7 @@ public sealed class SetupService : ISetupService
 {
     private readonly IPowerShellRunner _runner;
     private readonly IDockerService _docker;
+    private readonly IElevationService _elevation;
     private readonly ILogger<SetupService> _logger;
 
     private static readonly Dictionary<string, string> Fixes = new()
@@ -24,10 +25,15 @@ public sealed class SetupService : ISetupService
         ["switch-to-windows-mode"] = "Docker auf Windows-Container-Modus umschalten"
     };
 
-    public SetupService(IPowerShellRunner runner, IDockerService docker, ILogger<SetupService> logger)
+    public SetupService(
+        IPowerShellRunner runner,
+        IDockerService docker,
+        IElevationService elevation,
+        ILogger<SetupService> logger)
     {
         _runner = runner;
         _docker = docker;
+        _elevation = elevation;
         _logger = logger;
     }
 
@@ -40,7 +46,20 @@ public sealed class SetupService : ISetupService
 
         if (fixId == "switch-to-windows-mode")
         {
-            return await _docker.SwitchToWindowsModeAsync(cancellationToken).ConfigureAwait(false);
+            // DockerCli.exe -SwitchDaemon braucht Admin. Wenn die App selbst als
+            // Standard-User läuft, wird der UAC-Prompt aufgehen — der User gibt
+            // den lokalen Admin (.\admin) ein.
+            if (AdminContext.IsCurrentProcessAdmin)
+            {
+                return await _docker.SwitchToWindowsModeAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            const string dockerCli = @"C:\Program Files\Docker\Docker\DockerCli.exe";
+            return await _elevation.RunElevatedAsync(
+                fileName: dockerCli,
+                arguments: "-SwitchDaemon",
+                timeout: TimeSpan.FromMinutes(2),
+                cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
         var script = GetFixScript(fixId);

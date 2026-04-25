@@ -9,12 +9,15 @@ namespace BcContainerLauncher.Core.Tests.Setup;
 
 public class SetupServiceTests
 {
-    private static (SetupService Sut, FakePowerShellRunner Runner, Mock<IDockerService> Docker) CreateSut()
+    private static (SetupService Sut, FakePowerShellRunner Runner, Mock<IDockerService> Docker, Mock<IElevationService> Elevation) CreateSut()
     {
         var runner = new FakePowerShellRunner();
         var docker = new Mock<IDockerService>();
-        var sut = new SetupService(runner, docker.Object, NullLogger<SetupService>.Instance);
-        return (sut, runner, docker);
+        var elevation = new Mock<IElevationService>();
+        elevation.Setup(e => e.RunElevatedAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                 .ReturnsAsync(true);
+        var sut = new SetupService(runner, docker.Object, elevation.Object, NullLogger<SetupService>.Instance);
+        return (sut, runner, docker, elevation);
     }
 
     [Theory]
@@ -25,7 +28,7 @@ public class SetupServiceTests
     [InlineData("remove-legacy-module", "Uninstall-PSResource -Name navcontainerhelper")]
     public async Task ApplyFixAsync_RunsExpectedCommand(string fixId, string mustContain)
     {
-        var (sut, runner, _) = CreateSut();
+        var (sut, runner, _, _) = CreateSut();
 
         var ok = await sut.ApplyFixAsync(fixId);
 
@@ -43,7 +46,7 @@ public class SetupServiceTests
         // Alle PSGallery-orientierten Fixes sollen PSResourceGet vor dem
         // eigentlichen Cmdlet bootstrappen, damit der PowerShellGet-1.0.0.1-Bug
         // unter PS7-In-Process umgangen wird.
-        var (sut, runner, _) = CreateSut();
+        var (sut, runner, _, _) = CreateSut();
 
         await sut.ApplyFixAsync(fixId);
 
@@ -53,22 +56,32 @@ public class SetupServiceTests
     }
 
     [Fact]
-    public async Task ApplyFixAsync_SwitchToWindowsMode_DelegatesToDocker()
+    public async Task ApplyFixAsync_SwitchToWindowsMode_NonAdmin_ElevatesViaUac()
     {
-        var (sut, runner, docker) = CreateSut();
-        docker.Setup(d => d.SwitchToWindowsModeAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        // Default: AdminContext.IsCurrentProcessAdmin == false (Test-Process ist
+        // nicht elevated). Damit muss der Fix den ElevationService aufrufen, NICHT
+        // den DockerService direkt.
+        var (sut, runner, docker, elevation) = CreateSut();
+        elevation.Setup(e => e.RunElevatedAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+                 .ReturnsAsync(true);
 
         var ok = await sut.ApplyFixAsync("switch-to-windows-mode");
 
         ok.Should().BeTrue();
-        docker.Verify(d => d.SwitchToWindowsModeAsync(It.IsAny<CancellationToken>()), Times.Once);
+        elevation.Verify(e => e.RunElevatedAsync(
+            It.Is<string>(s => s.Contains("DockerCli.exe")),
+            It.Is<string>(a => a.Contains("-SwitchDaemon")),
+            It.IsAny<TimeSpan?>(),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+        docker.Verify(d => d.SwitchToWindowsModeAsync(It.IsAny<CancellationToken>()), Times.Never);
         runner.Calls.Should().BeEmpty();
     }
 
     [Fact]
     public async Task ApplyFixAsync_UnknownId_Throws()
     {
-        var (sut, _, _) = CreateSut();
+        var (sut, _, _, _) = CreateSut();
 
         var act = async () => await sut.ApplyFixAsync("does-not-exist");
 
@@ -78,7 +91,7 @@ public class SetupServiceTests
     [Fact]
     public void AvailableFixes_ContainsAllKnownIds()
     {
-        var (sut, _, _) = CreateSut();
+        var (sut, _, _, _) = CreateSut();
 
         sut.AvailableFixes.Keys.Should().Contain(new[]
         {
