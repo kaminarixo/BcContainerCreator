@@ -96,6 +96,7 @@ public partial class App : Application
                 // ViewModels
                 services.AddSingleton<DiagnosticsViewModel>();
                 services.AddSingleton<CreateContainerViewModel>();
+                services.AddSingleton<ManageContainersViewModel>();
                 services.AddSingleton<LogViewModel>();
                 services.AddSingleton<MainViewModel>();
 

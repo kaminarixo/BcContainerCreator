@@ -22,7 +22,8 @@ public sealed class SetupService : ISetupService
         ["trust-psgallery"] = "PSGallery als vertrauenswürdig markieren",
         ["install-bccontainerhelper"] = "BcContainerHelper aus PSGallery installieren",
         ["remove-legacy-module"] = "Legacy-Modul navcontainerhelper entfernen",
-        ["switch-to-windows-mode"] = "Docker auf Windows-Container-Modus umschalten"
+        ["switch-to-windows-mode"] = "Docker auf Windows-Container-Modus umschalten",
+        ["install-docker-desktop"] = "Docker Desktop installieren (via winget)"
     };
 
     public SetupService(
@@ -43,6 +44,12 @@ public sealed class SetupService : ISetupService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(fixId);
         _logger.LogInformation("Fix {FixId} wird angewendet", fixId);
+
+        if (fixId == "install-docker-desktop")
+        {
+            // Always elevated — Docker Desktop installiert sich systemweit.
+            return await InstallDockerDesktopElevatedAsync(cancellationToken).ConfigureAwait(false);
+        }
 
         if (fixId == "switch-to-windows-mode")
         {
@@ -69,6 +76,62 @@ public sealed class SetupService : ISetupService
             _logger.LogError("Fix {FixId} fehlgeschlagen: {Errors}", fixId, string.Join("; ", result.Errors));
         }
         return result.Success;
+    }
+
+    private async Task<bool> InstallDockerDesktopElevatedAsync(CancellationToken ct)
+    {
+        // Skript in temp ablegen, damit der elevated PowerShell-Process es per
+        // -File aufrufen kann — schöneres Logging als ein zusammengeklebter -Command.
+        var tempScript = Path.Combine(Path.GetTempPath(), $"bccl-docker-install-{Guid.NewGuid():N}.ps1");
+        const string script = """
+            $ErrorActionPreference = 'Stop'
+            Write-Host '== BC Container Launcher: Docker Desktop Setup =='
+
+            $winget = Get-Command winget -ErrorAction SilentlyContinue
+            if (-not $winget) {
+                Write-Host 'winget nicht gefunden. Bitte App Installer aus dem Microsoft Store installieren oder Docker Desktop manuell:'
+                Write-Host '  https://www.docker.com/products/docker-desktop/'
+                Start-Process 'https://www.docker.com/products/docker-desktop/'
+                Read-Host 'Druecke Enter zum Beenden'
+                exit 2
+            }
+
+            Write-Host 'Starte: winget install Docker.DockerDesktop ...'
+            & winget install --exact --id Docker.DockerDesktop `
+                --silent `
+                --accept-package-agreements `
+                --accept-source-agreements `
+                --scope machine
+            $code = $LASTEXITCODE
+            Write-Host ("winget exit code: {0}" -f $code)
+            if ($code -ne 0 -and $code -ne -1978335189) {
+                # -1978335189 = APPINSTALLER_CLI_ERROR_PACKAGE_ALREADY_INSTALLED
+                Write-Host 'Install fehlgeschlagen. Fenster bleibt offen — bitte Output kopieren.'
+                Read-Host 'Enter zum Beenden'
+                exit $code
+            }
+
+            Write-Host ''
+            Write-Host 'Docker Desktop wurde installiert oder ist bereits vorhanden.'
+            Write-Host 'Beim ersten Start wird Docker Desktop ggf. WSL2-Komponenten nachladen und einen Neustart verlangen.'
+            Write-Host ''
+            Read-Host 'Enter zum Schliessen'
+            exit 0
+            """;
+
+        try
+        {
+            await File.WriteAllTextAsync(tempScript, script, ct).ConfigureAwait(false);
+            return await _elevation.RunElevatedAsync(
+                fileName: "powershell.exe",
+                arguments: $"-NoProfile -ExecutionPolicy Bypass -File \"{tempScript}\"",
+                timeout: TimeSpan.FromMinutes(20),
+                cancellationToken: ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            try { File.Delete(tempScript); } catch { /* nicht kritisch */ }
+        }
     }
 
     private static string GetFixScript(string fixId)

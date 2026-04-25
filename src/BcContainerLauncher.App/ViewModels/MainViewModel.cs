@@ -9,6 +9,7 @@ public sealed partial class MainViewModel : ObservableObject
 {
     public DiagnosticsViewModel Diagnostics { get; }
     public CreateContainerViewModel CreateContainer { get; }
+    public ManageContainersViewModel ManageContainers { get; }
     public LogViewModel Log { get; }
 
     [ObservableProperty]
@@ -17,10 +18,12 @@ public sealed partial class MainViewModel : ObservableObject
     public MainViewModel(
         DiagnosticsViewModel diagnostics,
         CreateContainerViewModel createContainer,
+        ManageContainersViewModel manageContainers,
         LogViewModel log)
     {
         Diagnostics = diagnostics;
         CreateContainer = createContainer;
+        ManageContainers = manageContainers;
         Log = log;
     }
 }

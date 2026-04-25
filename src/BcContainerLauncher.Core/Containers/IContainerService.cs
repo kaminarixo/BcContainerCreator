@@ -33,4 +33,16 @@ public interface IContainerService
         ArtifactType type,
         string country,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Listet alle vorhandenen Container (laufend + gestoppt).</summary>
+    Task<IReadOnlyList<ContainerInfo>> ListContainersAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Startet einen Container per Name.</summary>
+    Task<bool> StartContainerAsync(string name, CancellationToken cancellationToken = default);
+
+    /// <summary>Stoppt einen Container per Name (sanft).</summary>
+    Task<bool> StopContainerAsync(string name, CancellationToken cancellationToken = default);
+
+    /// <summary>Entfernt einen Container per Name. <paramref name="force"/> stoppt vorher.</summary>
+    Task<bool> RemoveContainerAsync(string name, bool force = true, CancellationToken cancellationToken = default);
 }

@@ -166,8 +166,12 @@ public sealed class PreflightCheck : IPreflightCheck
         return new CheckResult(
             Name: "Docker installiert",
             Status: ok ? CheckStatus.Ok : CheckStatus.Failed,
-            Message: ok ? "Docker-CLI im PATH." : "Docker Desktop fehlt — bitte herunterladen und installieren (Admin nötig).",
-            IsFixable: false,
+            Message: ok
+                ? "Docker-CLI im PATH."
+                : "Docker Desktop fehlt — Fix installiert per winget (Admin nötig).",
+            IsFixable: !ok,
+            FixId: ok ? null : "install-docker-desktop",
+            RequiresAdminForFix: !ok,
             HelpUrl: "https://docs.docker.com/desktop/install/windows-install/");
     }
 

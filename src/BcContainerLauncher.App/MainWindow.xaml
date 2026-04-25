@@ -93,7 +93,7 @@
             </TabItem>
             <TabItem Header="Container verwalten">
                 <Border Background="{StaticResource Surface}">
-                    <views:PlaceholderView Tag="Container verwalten" />
+                    <views:ManageContainersView DataContext="{Binding ManageContainers}" />
                 </Border>
             </TabItem>
             <TabItem Header="Log">

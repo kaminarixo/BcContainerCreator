@@ -203,6 +203,108 @@ public sealed class ContainerService : IContainerService
         return result.Objects.FirstOrDefault()?.ToString();
     }
 
+    public async Task<IReadOnlyList<ContainerInfo>> ListContainersAsync(CancellationToken cancellationToken = default)
+    {
+        // 'docker ps -a --format json' liefert pro Zeile EIN JSON-Objekt
+        // (NDJSON-Style). Wir lesen die Zeilen ein und parsen jede für sich.
+        const string script = @"docker ps -a --no-trunc --format '{{json .}}' 2>$null";
+        var result = await _runner.ExecuteAsync(script, cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (!result.Success)
+        {
+            _logger.LogWarning("docker ps fehlgeschlagen: {Errors}", string.Join("; ", result.Errors));
+            return Array.Empty<ContainerInfo>();
+        }
+
+        var containers = new List<ContainerInfo>();
+        foreach (var obj in result.Objects)
+        {
+            var line = obj?.ToString();
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(line);
+                var root = doc.RootElement;
+                var name = GetString(root, "Names");
+                var image = GetString(root, "Image");
+                var status = GetString(root, "Status");
+                var id = GetString(root, "ID");
+                var ports = GetString(root, "Ports");
+                var state = GetString(root, "State");
+
+                var isRunning = string.Equals(state, "running", StringComparison.OrdinalIgnoreCase)
+                    || status.StartsWith("Up ", StringComparison.OrdinalIgnoreCase);
+
+                var isBc = image.Contains("bcartifacts", StringComparison.OrdinalIgnoreCase)
+                    || image.Contains("businesscentral", StringComparison.OrdinalIgnoreCase)
+                    || image.Contains("bcsandbox", StringComparison.OrdinalIgnoreCase);
+
+                // BcContainerHelper trägt typischerweise einen Hostfile-Eintrag
+                // <name> -> Container-IP ein, sodass http://<name>/BC erreichbar ist.
+                var url = isBc && !string.IsNullOrWhiteSpace(name)
+                    ? $"http://{name}/BC"
+                    : null;
+
+                containers.Add(new ContainerInfo(id, name, image, status, isRunning, ports, url, isBc));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Konnte docker-ps-Zeile nicht parsen: {Line}", line);
+            }
+        }
+        return containers;
+    }
+
+    public async Task<bool> StartContainerAsync(string name, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        var quoted = QuoteForDocker(name);
+        var result = await _runner.ExecuteAsync($"docker start {quoted}; $LASTEXITCODE", cancellationToken: cancellationToken).ConfigureAwait(false);
+        return WasZeroExit(result);
+    }
+
+    public async Task<bool> StopContainerAsync(string name, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        var quoted = QuoteForDocker(name);
+        var result = await _runner.ExecuteAsync($"docker stop {quoted}; $LASTEXITCODE", cancellationToken: cancellationToken).ConfigureAwait(false);
+        return WasZeroExit(result);
+    }
+
+    public async Task<bool> RemoveContainerAsync(string name, bool force = true, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        var quoted = QuoteForDocker(name);
+        var forceFlag = force ? "-f " : string.Empty;
+        var result = await _runner.ExecuteAsync($"docker rm {forceFlag}{quoted}; $LASTEXITCODE", cancellationToken: cancellationToken).ConfigureAwait(false);
+        return WasZeroExit(result);
+    }
+
+    private static bool WasZeroExit(PSResult result)
+    {
+        if (!result.Success) return false;
+        var exit = result.Objects.LastOrDefault()?.BaseObject as int?;
+        return exit == 0;
+    }
+
+    private static string GetString(System.Text.Json.JsonElement el, string prop) =>
+        el.TryGetProperty(prop, out var v) ? v.GetString() ?? string.Empty : string.Empty;
+
+    /// <summary>
+    /// Quoted einen docker-Argument-String defensiv (nur a-z A-Z 0-9 _ -)
+    /// — Container-Namen sind genau aus diesem Alphabet, daher Pass-through.
+    /// </summary>
+    private static string QuoteForDocker(string s)
+    {
+        foreach (var c in s)
+        {
+            if (!char.IsLetterOrDigit(c) && c is not ('-' or '_' or '.'))
+            {
+                throw new ArgumentException($"Ungültiger Container-Name (enthält '{c}').", nameof(s));
+            }
+        }
+        return s;
+    }
+
     private static void Validate(ContainerCreateRequest req)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(req.ContainerName);
