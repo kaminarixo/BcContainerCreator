@@ -52,23 +52,6 @@ public sealed class PowerShellRunner : IPowerShellRunner
             rs.Open();
             _runspace = rs;
 
-            // PSModulePath bereinigen: Windows-PowerShell-5.1-Modulpfade entfernen,
-            // sonst lädt die PS7-In-Process-Engine das uralte PowerShellGet 1.0.0.1
-            // aus C:\Program Files\WindowsPowerShell\Modules\ und scheitert mit
-            // "$script:IsWindows cannot be retrieved" (PS5.1-only-Globals).
-            using (var bootstrap = System.Management.Automation.PowerShell.Create())
-            {
-                bootstrap.Runspace = rs;
-                bootstrap.AddScript("""
-                    $sep = [IO.Path]::PathSeparator
-                    $env:PSModulePath = (
-                        $env:PSModulePath -split $sep |
-                        Where-Object { $_ -and ($_ -notmatch 'WindowsPowerShell') }
-                    ) -join $sep
-                """);
-                bootstrap.Invoke();
-            }
-
             _logger.LogInformation("PowerShell-Runspace bereit (PSVersion: {Version})", rs.Version);
         }
         finally

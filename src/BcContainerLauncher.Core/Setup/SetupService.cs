@@ -54,8 +54,6 @@ public sealed class SetupService : ISetupService
 
     private static string GetFixScript(string fixId)
     {
-        // PowerShell-Skripte als rohe Strings — keine C#-Interpolation, weil
-        // PS-Klammern sonst als Interpolations-Holes interpretiert werden.
         var bcch = Constants.BcContainerHelperModule;
         var legacy = Constants.LegacyNavContainerHelperModule;
 
@@ -64,21 +62,94 @@ public sealed class SetupService : ISetupService
             "set-execution-policy" =>
                 "Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force",
 
+            // PowerShellGet 1.0.0.1 (vom Windows-PowerShell-5.1-Pfad) ist mit
+            // PS7-In-Process-SDK inkompatibel und wirft '$script:IsWindows' /
+            // '$LocalizedData' Fehler. Wir bootstrappen daher PSResourceGet
+            // direkt aus dem PSGallery-NuGet-Feed und benutzen Install-PSResource.
             "install-nuget-provider" =>
-                "Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null",
+                EnsurePSResourceGetScript() +
+                "\nWrite-Information 'PackageManagement/NuGet-Provider werden über PSResourceGet ersetzt.'",
 
             "trust-psgallery" =>
-                "Set-PSRepository -Name PSGallery -InstallationPolicy Trusted",
+                EnsurePSResourceGetScript() +
+                "\nSet-PSResourceRepository -Name PSGallery -Trusted -ErrorAction Stop",
 
             "install-bccontainerhelper" =>
-                $"if (Get-Module -ListAvailable -Name {bcch}) {{ Update-Module -Name {bcch} -Force -ErrorAction Stop }} " +
-                $"else {{ Install-Module -Name {bcch} -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop }}",
+                EnsurePSResourceGetScript() +
+                $"\nInstall-PSResource -Name {bcch} -Repository PSGallery -TrustRepository -Reinstall -Scope CurrentUser -ErrorAction Stop",
 
             "remove-legacy-module" =>
-                $"Get-Module -Name {legacy} | Remove-Module -Force -ErrorAction SilentlyContinue; " +
-                $"Uninstall-Module -Name {legacy} -AllVersions -Force -ErrorAction SilentlyContinue",
+                $"Get-Module -Name {legacy} | Remove-Module -Force -ErrorAction SilentlyContinue\n" +
+                EnsurePSResourceGetScript() +
+                $"\n$installed = Get-InstalledPSResource -Name {legacy} -ErrorAction SilentlyContinue\n" +
+                $"if ($installed) {{ Uninstall-PSResource -Name {legacy} -Scope CurrentUser -ErrorAction SilentlyContinue }}",
 
             _ => throw new ArgumentException($"Unbekannte Fix-ID: {fixId}", nameof(fixId))
         };
     }
+
+    /// <summary>
+    /// Liefert ein PowerShell-Skript, das nach Ausführung garantiert
+    /// <c>Install-PSResource</c> bzw. <c>Set-PSResourceRepository</c> verfügbar
+    /// macht. Falls nicht installiert, wird Microsoft.PowerShell.PSResourceGet
+    /// als nupkg aus PSGallery heruntergeladen, in den User-Module-Pfad
+    /// entpackt und importiert. Das umgeht den PowerShellGet-1.0.0.1-Bug
+    /// unter PS7-In-Process komplett.
+    /// </summary>
+    private static string EnsurePSResourceGetScript() => """
+        if (-not (Get-Command Install-PSResource -ErrorAction SilentlyContinue)) {
+            $existing = Get-Module -ListAvailable -Name Microsoft.PowerShell.PSResourceGet -ErrorAction SilentlyContinue |
+                        Sort-Object Version -Descending | Select-Object -First 1
+            if ($existing) {
+                Import-Module $existing -Force -ErrorAction Stop
+            }
+        }
+
+        if (-not (Get-Command Install-PSResource -ErrorAction SilentlyContinue)) {
+            Write-Information 'Microsoft.PowerShell.PSResourceGet wird aus PSGallery nachinstalliert...'
+
+            $version  = '1.1.1'
+            $tmpDir   = Join-Path $env:TEMP "bccl-psresget-$([Guid]::NewGuid().ToString('N'))"
+            New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
+
+            try {
+                $nupkg = Join-Path $tmpDir 'psresourceget.nupkg'
+                $url   = "https://www.powershellgallery.com/api/v2/package/Microsoft.PowerShell.PSResourceGet/$version"
+                $oldProgress = $ProgressPreference
+                $ProgressPreference = 'SilentlyContinue'
+                try {
+                    Invoke-WebRequest -Uri $url -OutFile $nupkg -UseBasicParsing -ErrorAction Stop
+                } finally {
+                    $ProgressPreference = $oldProgress
+                }
+
+                Add-Type -AssemblyName System.IO.Compression.FileSystem
+                $extractDir = Join-Path $tmpDir 'extracted'
+                [System.IO.Compression.ZipFile]::ExtractToDirectory($nupkg, $extractDir)
+
+                $userModuleRoot = Join-Path $env:USERPROFILE "Documents\PowerShell\Modules\Microsoft.PowerShell.PSResourceGet\$version"
+                if (Test-Path $userModuleRoot) {
+                    Remove-Item $userModuleRoot -Recurse -Force -ErrorAction SilentlyContinue
+                }
+                New-Item -ItemType Directory -Force -Path $userModuleRoot | Out-Null
+
+                Get-ChildItem -Path $extractDir -Force |
+                    Where-Object { $_.Name -notin @('_rels','package','[Content_Types].xml') -and $_.Extension -ne '.nuspec' } |
+                    ForEach-Object { Copy-Item -Path $_.FullName -Destination $userModuleRoot -Recurse -Force }
+
+                $psd1 = Join-Path $userModuleRoot 'Microsoft.PowerShell.PSResourceGet.psd1'
+                if (-not (Test-Path $psd1)) {
+                    throw "Bootstrap fehlgeschlagen: $psd1 nicht gefunden."
+                }
+
+                Import-Module $psd1 -Force -ErrorAction Stop
+            } finally {
+                Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        if (-not (Get-Command Install-PSResource -ErrorAction SilentlyContinue)) {
+            throw 'Bootstrap von Microsoft.PowerShell.PSResourceGet fehlgeschlagen.'
+        }
+        """;
 }

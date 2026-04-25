@@ -19,10 +19,10 @@ public class SetupServiceTests
 
     [Theory]
     [InlineData("set-execution-policy", "Set-ExecutionPolicy")]
-    [InlineData("install-nuget-provider", "Install-PackageProvider")]
-    [InlineData("trust-psgallery", "Set-PSRepository")]
-    [InlineData("install-bccontainerhelper", "Install-Module")]
-    [InlineData("remove-legacy-module", "Uninstall-Module")]
+    [InlineData("install-nuget-provider", "PSResourceGet")]
+    [InlineData("trust-psgallery", "Set-PSResourceRepository")]
+    [InlineData("install-bccontainerhelper", "Install-PSResource -Name BcContainerHelper")]
+    [InlineData("remove-legacy-module", "Uninstall-PSResource -Name navcontainerhelper")]
     public async Task ApplyFixAsync_RunsExpectedCommand(string fixId, string mustContain)
     {
         var (sut, runner, _) = CreateSut();
@@ -32,6 +32,24 @@ public class SetupServiceTests
         ok.Should().BeTrue();
         runner.Calls.Should().ContainSingle();
         runner.Calls[0].Script.Should().Contain(mustContain);
+    }
+
+    [Theory]
+    [InlineData("trust-psgallery")]
+    [InlineData("install-bccontainerhelper")]
+    [InlineData("remove-legacy-module")]
+    public async Task ApplyFixAsync_PSGalleryFixes_BootstrapPSResourceGet(string fixId)
+    {
+        // Alle PSGallery-orientierten Fixes sollen PSResourceGet vor dem
+        // eigentlichen Cmdlet bootstrappen, damit der PowerShellGet-1.0.0.1-Bug
+        // unter PS7-In-Process umgangen wird.
+        var (sut, runner, _) = CreateSut();
+
+        await sut.ApplyFixAsync(fixId);
+
+        runner.Calls.Should().ContainSingle();
+        runner.Calls[0].Script.Should().Contain("Install-PSResource"); // Cmdlet-Check
+        runner.Calls[0].Script.Should().Contain("Microsoft.PowerShell.PSResourceGet");
     }
 
     [Fact]
