@@ -1,0 +1,54 @@
+# .NET
+bin/
+obj/
+out/
+publish/
+*.user
+*.suo
+*.userprefs
+*.swp
+
+# IDEs
+.vs/
+.vscode/
+.idea/
+*.DotSettings.user
+
+# Logs
+*.log
+logs/
+Logs/
+
+# Build outputs
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+
+# Test
+[Tt]est[Rr]esults/
+*.coverage
+*.coveragexml
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+
+# Secrets / Env
+*.env
+appsettings.Local.json
+secrets.json
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Publish
+PublishProfiles/
