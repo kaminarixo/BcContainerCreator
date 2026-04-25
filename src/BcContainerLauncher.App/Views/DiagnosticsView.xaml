@@ -13,18 +13,17 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12">
             <Button Content="Alle prüfen"
-                    Padding="12,6"
+                    Style="{StaticResource PrimaryButton}"
                     Margin="0,0,8,0"
                     Command="{Binding RunAllCommand}" />
             <Button Content="Alle Fixes anwenden"
-                    Padding="12,6"
                     Command="{Binding FixAllCommand}" />
             <TextBlock Text="{Binding StatusText}"
                        Margin="16,0,0,0"
                        VerticalAlignment="Center"
-                       Foreground="#555" />
+                       Foreground="{StaticResource TextMuted}" />
         </StackPanel>
 
         <Border Grid.Row="1"

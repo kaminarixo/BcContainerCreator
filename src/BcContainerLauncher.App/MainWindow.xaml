@@ -8,25 +8,101 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="BC Container Launcher"
-        Height="720" Width="1100"
-        MinHeight="500" MinWidth="800"
-        WindowStartupLocation="CenterScreen">
+        Height="780" Width="1180"
+        MinHeight="560" MinWidth="900"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource Surface}">
+
     <Grid>
-        <TabControl SelectedIndex="{Binding SelectedTabIndex}" Margin="0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="3" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Brand-Header -->
+        <Border Grid.Row="0" Background="{StaticResource HeaderBg}">
+            <Grid Margin="20,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Brand-Logo. Source wird im Code-Behind gesetzt; fehlt die
+                     Datei, bleibt das Image leer ohne XAML-Parse-Fehler. -->
+                <Image x:Name="LogoImage"
+                       Grid.Column="0"
+                       Width="42" Height="42"
+                       VerticalAlignment="Center"
+                       Margin="0,0,14,0"
+                       RenderOptions.BitmapScalingMode="HighQuality" />
+
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="BC Container Launcher"
+                               Foreground="White"
+                               FontSize="18"
+                               FontWeight="SemiBold" />
+                    <TextBlock Text="Business Central Docker-Container per GUI verwalten"
+                               Foreground="#9C9C9C"
+                               FontSize="11"
+                               Margin="0,2,0,0" />
+                </StackPanel>
+
+                <!-- Phase-/Status-Pill rechts -->
+                <Border Grid.Column="2"
+                        VerticalAlignment="Center"
+                        Padding="10,4"
+                        CornerRadius="3"
+                        Background="#262626">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="8" Height="8"
+                                 Fill="{StaticResource BrandOrange}"
+                                 VerticalAlignment="Center"
+                                 Margin="0,0,8,0" />
+                        <TextBlock Text="Phase 1 — PoC"
+                                   Foreground="#CFCFCF"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- Brand-Akzent-Streifen unter dem Header -->
+        <Rectangle Grid.Row="1" Fill="{StaticResource BrandGradient}" />
+
+        <!-- TabControl: dunkle Header-Leiste, heller Content-Bereich -->
+        <TabControl Grid.Row="2"
+                    SelectedIndex="{Binding SelectedTabIndex}"
+                    Background="{StaticResource HeaderBg}"
+                    BorderThickness="0"
+                    Padding="0">
             <TabItem Header="Diagnose">
-                <views:DiagnosticsView DataContext="{Binding Diagnostics}" />
+                <Border Background="{StaticResource Surface}">
+                    <views:DiagnosticsView DataContext="{Binding Diagnostics}" />
+                </Border>
             </TabItem>
             <TabItem Header="Container erstellen">
-                <views:CreateContainerView DataContext="{Binding CreateContainer}" />
+                <Border Background="{StaticResource Surface}">
+                    <views:CreateContainerView DataContext="{Binding CreateContainer}" />
+                </Border>
             </TabItem>
             <TabItem Header="Container verwalten">
-                <views:PlaceholderView Tag="Container verwalten" />
+                <Border Background="{StaticResource Surface}">
+                    <views:PlaceholderView Tag="Container verwalten" />
+                </Border>
             </TabItem>
             <TabItem Header="Log">
-                <views:LogView DataContext="{Binding Log}" />
+                <Border Background="{StaticResource Surface}">
+                    <views:LogView DataContext="{Binding Log}" />
+                </Border>
             </TabItem>
             <TabItem Header="Einstellungen">
-                <views:PlaceholderView Tag="Einstellungen" />
+                <Border Background="{StaticResource Surface}">
+                    <views:PlaceholderView Tag="Einstellungen" />
+                </Border>
             </TabItem>
         </TabControl>
     </Grid>

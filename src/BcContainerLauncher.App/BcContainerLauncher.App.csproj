@@ -20,6 +20,13 @@
     <ProjectReference Include="..\BcContainerLauncher.Core\BcContainerLauncher.Core.csproj" />
   </ItemGroup>
 
+  <!-- Brand-Assets: Logo, Icon usw. Wildcard, damit das Hinzufügen einer Datei
+       in Assets/ keine csproj-Anpassung mehr erfordert. -->
+  <ItemGroup>
+    <Resource Include="Assets\**\*.png" />
+    <Resource Include="Assets\**\*.ico" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.7" />
