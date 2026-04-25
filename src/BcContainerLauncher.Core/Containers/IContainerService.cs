@@ -4,23 +4,33 @@ using BcContainerLauncher.Core.PowerShell;
 namespace BcContainerLauncher.Core.Containers;
 
 /// <summary>
-/// Container-Operationen (Phase 1: nur Erstellung).
+/// Container-Operationen (Phase 1: nur Erstellung + Versions-Auflistung).
 /// </summary>
 public interface IContainerService
 {
-    /// <summary>
-    /// Erstellt einen BC-Container gemäß <paramref name="request"/>.
-    /// Live-Output wird zusätzlich über <see cref="IPowerShellRunner.OutputReceived"/>
-    /// gestreamt; <paramref name="progress"/> liefert einen kompakten Statustext.
-    /// </summary>
     Task<PSResult> CreateContainerAsync(
         ContainerCreateRequest request,
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Baut das PowerShell-Skript, das <see cref="CreateContainerAsync"/> ausführen würde.
-    /// Public, damit es testbar und im UI als Vorschau anzeigbar ist.
-    /// </summary>
     string BuildCreateScript(ContainerCreateRequest request);
+
+    /// <summary>
+    /// Holt die zuletzt verfügbaren Artifact-Versionen für Type+Country.
+    /// Sortiert absteigend, eindeutig, max <paramref name="top"/> Einträge.
+    /// </summary>
+    Task<IReadOnlyList<string>> GetAvailableVersionsAsync(
+        ArtifactType type,
+        string country,
+        int top = 15,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Löst "latest" zur konkreten Versionsnummer auf (z. B. "26.0.1234.5678").
+    /// Liefert null, wenn keine URL gefunden wird.
+    /// </summary>
+    Task<string?> ResolveLatestVersionAsync(
+        ArtifactType type,
+        string country,
+        CancellationToken cancellationToken = default);
 }

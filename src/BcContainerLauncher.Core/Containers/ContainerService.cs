@@ -31,9 +31,24 @@ public sealed class ContainerService : IContainerService
         sb.AppendLine($"Import-Module {Constants.BcContainerHelperModule} -Force -ErrorAction Stop");
         sb.AppendLine();
 
-        // Artifact URL holen.
+        // Artifact URL holen. WICHTIG: 'latest' / leer → -version weglassen,
+        // sonst sucht Get-BcArtifactUrl nach einer Version namens 'latest' und
+        // liefert nichts zurück → "You have to specify artifactUrl"-Fehler bei New-BcContainer.
         var typeArg = request.ArtifactType == ArtifactType.Sandbox ? "Sandbox" : "OnPrem";
-        sb.AppendLine($"$artifactUrl = Get-BcArtifactUrl -type {typeArg} -country {Quote(request.Country)} -version {Quote(request.Version)} -select Latest");
+        var versionTrimmed = request.Version?.Trim() ?? string.Empty;
+        var useExplicitVersion = !string.IsNullOrEmpty(versionTrimmed)
+            && !string.Equals(versionTrimmed, "latest", StringComparison.OrdinalIgnoreCase);
+
+        if (useExplicitVersion)
+        {
+            sb.AppendLine($"$artifactUrl = Get-BcArtifactUrl -type {typeArg} -country {Quote(request.Country)} -version {Quote(versionTrimmed)} -select Latest");
+        }
+        else
+        {
+            sb.AppendLine($"$artifactUrl = Get-BcArtifactUrl -type {typeArg} -country {Quote(request.Country)} -select Latest");
+        }
+        sb.AppendLine($"if (-not $artifactUrl) {{ throw \"Kein Artifact gefunden für type={typeArg}, country={request.Country}, version={(useExplicitVersion ? versionTrimmed : "latest")}.\" }}");
+        sb.AppendLine("Write-Information \"Artifact-URL: $artifactUrl\"");
         sb.AppendLine();
 
         // Credential aus injiziertem SecureString aufbauen.
@@ -127,6 +142,65 @@ public sealed class ContainerService : IContainerService
         }
 
         return result;
+    }
+
+    public async Task<IReadOnlyList<string>> GetAvailableVersionsAsync(
+        ArtifactType type,
+        string country,
+        int top = 15,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(country);
+        if (top <= 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        var typeArg = type == ArtifactType.Sandbox ? "Sandbox" : "OnPrem";
+        var script = $$"""
+            Import-Module {{Constants.BcContainerHelperModule}} -ErrorAction Stop
+            $urls = Get-BCArtifactUrl -type {{typeArg}} -country '{{country}}' -select All -ErrorAction Stop
+            $versions = $urls |
+                ForEach-Object {
+                    if ($_ -match '/(\d+\.\d+\.\d+\.\d+)/[^/]+/?$') { $matches[1] }
+                } |
+                Sort-Object -Unique -Property { [Version]$_ } -Descending |
+                Select-Object -First {{top}}
+            $versions
+            """;
+
+        var result = await _runner.ExecuteAsync(script, cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (!result.Success)
+        {
+            _logger.LogWarning("GetAvailableVersionsAsync fehlgeschlagen: {Errors}", string.Join("; ", result.Errors));
+            return Array.Empty<string>();
+        }
+        return result.Objects
+            .Select(o => o?.ToString() ?? string.Empty)
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .ToList();
+    }
+
+    public async Task<string?> ResolveLatestVersionAsync(
+        ArtifactType type,
+        string country,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(country);
+
+        var typeArg = type == ArtifactType.Sandbox ? "Sandbox" : "OnPrem";
+        var script =
+            $"Import-Module {Constants.BcContainerHelperModule} -ErrorAction Stop\n" +
+            $"$url = Get-BCArtifactUrl -type {typeArg} -country '{country}' -select Latest -ErrorAction SilentlyContinue\n" +
+            "if ($url -and ($url -match '/(\\d+\\.\\d+\\.\\d+\\.\\d+)/[^/]+/?$')) { $matches[1] }";
+
+        var result = await _runner.ExecuteAsync(script, cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (!result.Success)
+        {
+            _logger.LogWarning("ResolveLatestVersionAsync fehlgeschlagen: {Errors}", string.Join("; ", result.Errors));
+            return null;
+        }
+        return result.Objects.FirstOrDefault()?.ToString();
     }
 
     private static void Validate(ContainerCreateRequest req)

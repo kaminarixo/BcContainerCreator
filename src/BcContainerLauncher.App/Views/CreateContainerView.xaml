@@ -30,8 +30,34 @@
                           SelectedItem="{Binding SelectedCountry}"
                           IsEditable="True" />
 
-                <Label Content="Version" Margin="0,8,0,0" />
-                <TextBox Text="{Binding Version, UpdateSourceTrigger=PropertyChanged}" />
+                <Grid Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Label Grid.Column="0" Content="Version" />
+                    <Button Grid.Column="1"
+                            Content="Aktualisieren"
+                            Padding="8,2"
+                            FontSize="11"
+                            Command="{Binding ReloadVersionsCommand}" />
+                </Grid>
+                <ComboBox ItemsSource="{Binding AvailableVersions}"
+                          SelectedItem="{Binding SelectedVersion}"
+                          IsEditable="True" />
+                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                    <TextBlock Text="Lade Versionen…"
+                               FontSize="11"
+                               Foreground="{StaticResource TextMuted}"
+                               Visibility="{Binding IsLoadingVersions, Converter={StaticResource BoolToVis}}" />
+                    <TextBlock FontSize="11"
+                               Foreground="{StaticResource TextMuted}"
+                               Visibility="{Binding IsLoadingVersions, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
+                        <Run Text="latest = " />
+                        <Run Text="{Binding LatestResolvedVersion, FallbackValue=unbekannt, TargetNullValue=unbekannt}"
+                             FontWeight="SemiBold" />
+                    </TextBlock>
+                </StackPanel>
 
                 <Label Content="Auth-Typ" Margin="0,8,0,0" />
                 <ComboBox ItemsSource="{Binding AuthTypes}"
@@ -40,9 +66,26 @@
                 <Label Content="Username" Margin="0,8,0,0" />
                 <TextBox Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" />
 
-                <Label Content="Passwort" Margin="0,8,0,0" />
-                <PasswordBox svc:PasswordBoxAssistant.BindPassword="True"
-                             svc:PasswordBoxAssistant.BoundPassword="{Binding Password, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <Grid Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Label Grid.Column="0" Content="Passwort" />
+                    <CheckBox Grid.Column="1"
+                              Content="Anzeigen"
+                              FontSize="11"
+                              VerticalAlignment="Center"
+                              IsChecked="{Binding ShowPassword}" />
+                </Grid>
+                <Grid>
+                    <PasswordBox svc:PasswordBoxAssistant.BindPassword="True"
+                                 svc:PasswordBoxAssistant.PlainPassword="{Binding Password, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 Visibility="{Binding ShowPassword, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
+                    <TextBox Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}"
+                             Visibility="{Binding ShowPassword, Converter={StaticResource BoolToVis}}"
+                             FontFamily="{StaticResource MonoFont}" />
+                </Grid>
 
                 <Label Content="Lizenz-Datei (optional)" Margin="0,8,0,0" />
                 <Grid>

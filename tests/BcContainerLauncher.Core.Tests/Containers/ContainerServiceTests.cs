@@ -40,7 +40,10 @@ public class ContainerServiceTests
         var script = sut.BuildCreateScript(req);
 
         script.Should().Contain("Import-Module BcContainerHelper");
-        script.Should().Contain("Get-BcArtifactUrl -type OnPrem -country 'DE' -version 'latest'");
+        // 'latest' wird als implizites -select Latest behandelt — ohne explizites -version,
+        // weil Get-BcArtifactUrl sonst nach einer Version namens 'latest' suchen würde.
+        script.Should().Contain("Get-BcArtifactUrl -type OnPrem -country 'DE' -select Latest");
+        script.Should().NotContain("-version 'latest'");
         script.Should().Contain("New-BcContainer");
         script.Should().Contain("-containerName 'bcdev'");
         script.Should().Contain("-auth NavUserPassword");
