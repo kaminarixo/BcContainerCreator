@@ -136,16 +136,35 @@ public sealed class PreflightCheck : IPreflightCheck
 
     private async Task<CheckResult> CheckPSGalleryTrustAsync(CancellationToken ct)
     {
-        var r = await _runner.ExecuteAsync(
-            "(Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue).InstallationPolicy",
-            cancellationToken: ct).ConfigureAwait(false);
+        // Wir prüfen primär Microsoft.PowerShell.PSResourceGet (modern), weil
+        // unser trust-psgallery-Fix dort schreibt. Fallback auf das Legacy-
+        // Get-PSRepository, falls PSResourceGet noch nicht installiert ist —
+        // dann kann zumindest der Trust-Status der alten PSGallery-Welt gemeldet
+        // werden.
+        const string script = """
+            $status = 'unknown'
+            $rg = Get-Command Get-PSResourceRepository -ErrorAction SilentlyContinue
+            if ($rg) {
+                $repo = Get-PSResourceRepository -Name PSGallery -ErrorAction SilentlyContinue
+                if ($repo) { $status = if ($repo.Trusted) { 'Trusted' } else { 'Untrusted' } }
+            }
+            if ($status -eq 'unknown') {
+                $legacy = Get-Command Get-PSRepository -ErrorAction SilentlyContinue
+                if ($legacy) {
+                    $repo = Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
+                    if ($repo) { $status = $repo.InstallationPolicy }
+                }
+            }
+            $status
+            """;
 
-        var policy = r.Objects.FirstOrDefault()?.ToString() ?? "Untrusted";
+        var r = await _runner.ExecuteAsync(script, cancellationToken: ct).ConfigureAwait(false);
+        var policy = r.Objects.FirstOrDefault()?.ToString() ?? "unknown";
         var ok = string.Equals(policy, "Trusted", StringComparison.OrdinalIgnoreCase);
         return new CheckResult(
             Name: "PSGallery vertrauenswürdig",
             Status: ok ? CheckStatus.Ok : CheckStatus.Warning,
-            Message: ok ? "Trusted." : $"Aktuell: {policy} — Trust empfohlen für stille Installs.",
+            Message: ok ? "Trusted (PSResourceGet)." : $"Aktuell: {policy} — Trust empfohlen für stille Installs.",
             IsFixable: !ok,
             FixId: "trust-psgallery");
     }
