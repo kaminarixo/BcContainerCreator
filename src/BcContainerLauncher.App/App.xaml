@@ -1,9 +1,21 @@
-﻿<Application x:Class="BcContainerLauncher.App.App"
+<Application x:Class="BcContainerLauncher.App.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:local="clr-namespace:BcContainerLauncher.App"
-             StartupUri="MainWindow.xaml">
+             xmlns:conv="clr-namespace:BcContainerLauncher.App.Converters">
     <Application.Resources>
-         
+        <ResourceDictionary>
+            <conv:CheckStatusToBrushConverter x:Key="StatusToBrush" />
+            <conv:CheckStatusToIconConverter x:Key="StatusToIcon" />
+            <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
+            <conv:LogLevelToBrushConverter x:Key="LevelToBrush" />
+
+            <!-- Schriftarten -->
+            <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas, Courier New</FontFamily>
+
+            <!-- Farben -->
+            <SolidColorBrush x:Key="PanelBg" Color="#FAFAFA" />
+            <SolidColorBrush x:Key="PanelBorder" Color="#DDDDDD" />
+            <SolidColorBrush x:Key="HeaderFg" Color="#1F1F1F" />
+        </ResourceDictionary>
     </Application.Resources>
 </Application>
