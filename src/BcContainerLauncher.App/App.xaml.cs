@@ -12,7 +12,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
-using Serilog.Extensions.Logging;
 
 namespace BcContainerLauncher.App;
 
@@ -24,6 +23,32 @@ public partial class App : Application
         _host?.Services ?? throw new InvalidOperationException("Host nicht initialisiert.");
 
     protected override async void OnStartup(StartupEventArgs e)
+    {
+        // Globale Exception-Handler ZUERST, damit jede Exception ab hier sichtbar ist.
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
+
+        try
+        {
+            await StartupCoreAsync();
+        }
+        catch (Exception ex)
+        {
+            // Letzter Fallback: Fehler vor dem Window-Show ist sonst unsichtbar.
+            try { Log.Fatal(ex, "Startup fehlgeschlagen"); } catch { }
+            MessageBox.Show(
+                $"App konnte nicht starten:\n\n{ex}",
+                "Startup-Fehler",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Shutdown(-1);
+            return;
+        }
+
+        base.OnStartup(e);
+    }
+
+    private async Task StartupCoreAsync()
     {
         // Sink wird sehr früh erzeugt, weil der Logger über ihn schreibt UND
         // das LogViewModel ihn später per DI braucht.
@@ -47,16 +72,14 @@ public partial class App : Application
             .WriteTo.Sink(sink)
             .CreateLogger();
 
-        Log.Information("BC Container Launcher startet (PID {Pid})", Environment.ProcessId);
+        Log.Information("BC Container Launcher startet (PID {Pid}, OS {OS})",
+            Environment.ProcessId, Environment.OSVersion);
 
         _host = Host.CreateDefaultBuilder()
+            .UseSerilog()
             .ConfigureServices((_, services) =>
             {
-                // Logging über Serilog wiederverwenden.
-                services.AddSingleton<ILoggerFactory>(_ => new SerilogLoggerFactory(Log.Logger, dispose: false));
-                services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
-
-                // Sink als Singleton, sowohl als Konkretklasse als auch als Schnittstelle.
+                // Sink als Singleton, sodass ihn das LogViewModel per DI bekommt.
                 services.AddSingleton(sink);
 
                 // Core
@@ -82,21 +105,30 @@ public partial class App : Application
 
         await _host.StartAsync();
 
-        DispatcherUnhandledException += OnDispatcherUnhandledException;
-        AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
-
         var window = _host.Services.GetRequiredService<MainWindow>();
         window.DataContext = _host.Services.GetRequiredService<MainViewModel>();
         window.Show();
 
-        // Diagnose initial automatisch starten — non-blocking.
-        var diag = _host.Services.GetRequiredService<DiagnosticsViewModel>();
-        if (diag.RunAllCommand.CanExecute(null))
+        // Diagnose initial automatisch starten — non-blocking, im Background-Task.
+        // Fehler hier dürfen die App nicht killen.
+        _ = Task.Run(async () =>
         {
-            diag.RunAllCommand.Execute(null);
-        }
-
-        base.OnStartup(e);
+            try
+            {
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    var diag = _host.Services.GetRequiredService<DiagnosticsViewModel>();
+                    if (diag.RunAllCommand.CanExecute(null))
+                    {
+                        diag.RunAllCommand.Execute(null);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Initiale Diagnose fehlgeschlagen");
+            }
+        });
     }
 
     private static void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

@@ -42,11 +42,11 @@ public sealed class PowerShellRunner : IPowerShellRunner
             }
 
             _logger.LogInformation("Initialisiere PowerShell-Runspace");
-            var iss = InitialSessionState.CreateDefault();
-            // ExecutionPolicy für aktuellen Prozess setzen — kein System-Eingriff,
-            // greift nur für diesen Runspace.
+            // CreateDefault2 ist deutlich schlanker (lädt nur Microsoft.PowerShell.Core)
+            // und damit ~10x schneller im Open() als CreateDefault.
+            var iss = InitialSessionState.CreateDefault2();
+            // ExecutionPolicy für diesen Runspace; greift nicht systemweit.
             iss.ExecutionPolicy = Microsoft.PowerShell.ExecutionPolicy.Bypass;
-            iss.ThreadOptions = PSThreadOptions.UseCurrentThread;
 
             var rs = RunspaceFactory.CreateRunspace(iss);
             rs.Open();
