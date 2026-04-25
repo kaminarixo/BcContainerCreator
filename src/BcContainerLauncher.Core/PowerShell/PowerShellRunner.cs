@@ -42,6 +42,16 @@ public sealed class PowerShellRunner : IPowerShellRunner
             }
 
             _logger.LogInformation("Initialisiere PowerShell-Runspace");
+
+            // Microsoft.PowerShell.SDK liefert die Core-Module als loose Files
+            // unter <exe>/runtimes/win/lib/net10.0/Modules — ohne expliziten
+            // Eintrag im PSModulePath findet der Engine sie nicht und alle
+            // Microsoft.PowerShell.{Security,Utility,Management}-Cmdlets fallen
+            // (inkl. Set-ExecutionPolicy, Sort-Object, Join-Path, Invoke-WebRequest).
+            // Muss VOR Runspace-Open gesetzt werden, weil Set-Item / Set-Variable
+            // selbst aus Microsoft.PowerShell.Management kommen würden (Henne-Ei).
+            EnsureSdkModulesOnProcessPath();
+
             // CreateDefault2 ist deutlich schlanker (lädt nur Microsoft.PowerShell.Core)
             // und damit ~10x schneller im Open() als CreateDefault.
             var iss = InitialSessionState.CreateDefault2();
@@ -158,6 +168,82 @@ public sealed class PowerShellRunner : IPowerShellRunner
         finally
         {
             _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Hängt den SDK-eigenen Modules-Pfad ganz vorne in <c>$env:PSModulePath</c>
+    /// des Runspace ein. Sucht relativ zur .exe nach <c>runtimes/win/lib/netX.0/Modules</c>
+    /// — bei Single-File-Publish landet das im publish-Ordner als loose Files.
+    /// </summary>
+    private void EnsureSdkModulesOnProcessPath()
+    {
+        try
+        {
+            // Mehrere Kandidaten — abhängig davon, wie die App gestartet wurde:
+            //   * Direkt-Start der .exe → Environment.ProcessPath ist korrekt
+            //   * Via 'dotnet xxx.dll'  → ProcessPath zeigt auf dotnet.exe;
+            //     AppContext.BaseDirectory zeigt aufs DLL-Verzeichnis
+            //   * Single-File self-extract → AppContext.BaseDirectory ist Extract-Pfad
+            var candidates = new List<string>();
+            if (!string.IsNullOrEmpty(Environment.ProcessPath))
+            {
+                candidates.Add(Path.GetDirectoryName(Environment.ProcessPath)!);
+            }
+            candidates.Add(AppContext.BaseDirectory);
+            var asmLoc = typeof(PowerShellRunner).Assembly.Location;
+            if (!string.IsNullOrEmpty(asmLoc))
+            {
+                candidates.Add(Path.GetDirectoryName(asmLoc)!);
+            }
+
+            string? sdkModules = null;
+            string? checkedRoot = null;
+            foreach (var dir in candidates.Distinct())
+            {
+                checkedRoot = dir;
+                var runtimesDir = Path.Combine(dir, "runtimes", "win", "lib");
+                if (!Directory.Exists(runtimesDir))
+                {
+                    continue;
+                }
+
+                sdkModules = Directory.EnumerateDirectories(runtimesDir, "net*")
+                    .Select(d => Path.Combine(d, "Modules"))
+                    .FirstOrDefault(Directory.Exists);
+
+                if (sdkModules is not null)
+                {
+                    break;
+                }
+            }
+
+            if (sdkModules is null)
+            {
+                _logger.LogWarning("SDK-Modules-Pfad nicht gefunden (zuletzt geprüft: {Path}) — Cmdlet-Auflösung fällt auf System-PowerShell zurück.", checkedRoot);
+                return;
+            }
+
+            // Direkt am Process — kein PowerShell-Cmdlet, weil die fehlen ja gerade.
+            var current = Environment.GetEnvironmentVariable("PSModulePath") ?? string.Empty;
+            // Idempotent: nur prependen, wenn nicht schon drin.
+            var segments = current.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Any(s => string.Equals(s.TrimEnd('\\', '/'), sdkModules.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase)))
+            {
+                _logger.LogDebug("SDK-Modules-Pfad bereits im PSModulePath: {Path}", sdkModules);
+                return;
+            }
+
+            var newPath = string.IsNullOrEmpty(current)
+                ? sdkModules
+                : $"{sdkModules}{Path.PathSeparator}{current}";
+            Environment.SetEnvironmentVariable("PSModulePath", newPath);
+
+            _logger.LogInformation("SDK-Modules-Pfad vorangestellt: {Path}", sdkModules);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "EnsureSdkModulesOnProcessPath fehlgeschlagen");
         }
     }
 
