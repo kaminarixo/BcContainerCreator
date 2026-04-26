@@ -80,26 +80,6 @@
                 </StackPanel>
             </Border>
 
-            <!-- Über das Projekt -->
-            <Border Style="{StaticResource Card}" Margin="0,0,0,12">
-                <StackPanel>
-                    <TextBlock Text="Über das Projekt"
-                               FontWeight="SemiBold"
-                               Foreground="{StaticResource TextMuted}"
-                               Margin="0,0,0,6" />
-                    <TextBlock TextWrapping="Wrap" Margin="0,0,0,8">
-                        BC Container Creator ist ein internes Tool für die NAV-2017-zu-BC-28-Migration.
-                        Standard-User starten die App ohne UAC; benötigte Admin-Aktionen werden auf Wunsch elevated.
-                    </TextBlock>
-                    <TextBox Text="{Binding GitHubUrlDisplay, Mode=OneWay}"
-                             IsReadOnly="True"
-                             FontFamily="{StaticResource MonoFont}" />
-                    <Button Content="GitHub öffnen"
-                            HorizontalAlignment="Left"
-                            Margin="0,8,0,0"
-                            Command="{Binding OpenGitHubCommand}" />
-                </StackPanel>
-            </Border>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

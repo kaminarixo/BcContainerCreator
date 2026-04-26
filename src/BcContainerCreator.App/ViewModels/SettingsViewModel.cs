@@ -11,8 +11,6 @@ namespace BcContainerCreator.App.ViewModels;
 
 public sealed partial class SettingsViewModel : ObservableObject
 {
-    private const string GitHubUrl = "https://github.com/kaminarixo/BcContainerCreator";
-
     private readonly IDialogService _dialogService;
     private readonly ILogger<SettingsViewModel> _logger;
 
@@ -22,7 +20,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     public string LogFolder { get; }
     public string ContextLabel { get; } =
         AdminContext.IsCurrentProcessAdmin ? "Admin-Modus" : "Standard-User (Admin via UAC on demand)";
-    public string GitHubUrlDisplay => GitHubUrl;
 
     public SettingsViewModel(IDialogService dialogService, ILogger<SettingsViewModel> logger)
     {
@@ -58,17 +55,4 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
-    [RelayCommand]
-    private void OpenGitHub()
-    {
-        try
-        {
-            Process.Start(new ProcessStartInfo(GitHubUrl) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "GitHub-Link öffnen fehlgeschlagen");
-            _dialogService.ShowMessage(ex.Message, "Fehler", isError: true);
-        }
-    }
 }
