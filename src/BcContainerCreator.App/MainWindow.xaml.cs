@@ -68,10 +68,18 @@ public partial class MainWindow : Window
     /// </summary>
     private void TryLoadBrandAssets()
     {
+        // Window.Icon: ICO bevorzugen — multi-resolution, scharf in Taskbar
+        // / Alt-Tab / Title-Bar. Header-Logo bleibt das hochaufgelöste PNG.
+        var icon = TryLoadAsset("pack://application:,,,/Assets/icon.ico")
+                   ?? TryLoadAsset("pack://application:,,,/Assets/logo.png");
+        if (icon is not null)
+        {
+            Icon = icon;
+        }
+
         var logo = TryLoadAsset("pack://application:,,,/Assets/logo.png");
         if (logo is not null)
         {
-            Icon = logo;
             LogoImage.Source = logo;
         }
     }

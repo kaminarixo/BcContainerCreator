@@ -41,6 +41,9 @@ UninstallDisplayName={#MyAppName}
 MinVersion=10.0
 ShowLanguageDialog=auto
 SetupLogging=yes
+; Setup.exe selbst trägt das Brand-Icon. Wird auch als Programm-Icon im
+; Apps-&amp;-Features-Eintrag verwendet (zusammen mit UninstallDisplayIcon).
+SetupIconFile=..\src\BcContainerCreator.App\Assets\icon.ico
 
 [Languages]
 Name: "german";  MessagesFile: "compiler:Languages\German.isl"
