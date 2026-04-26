@@ -14,11 +14,13 @@ namespace BcContainerLauncher.Core.Containers;
 public sealed class ContainerService : IContainerService
 {
     private readonly IPowerShellRunner _runner;
+    private readonly IContainerMetadataStore _metadata;
     private readonly ILogger<ContainerService> _logger;
 
-    public ContainerService(IPowerShellRunner runner, ILogger<ContainerService> logger)
+    public ContainerService(IPowerShellRunner runner, IContainerMetadataStore metadata, ILogger<ContainerService> logger)
     {
         _runner = runner;
+        _metadata = metadata;
         _logger = logger;
     }
 
@@ -140,6 +142,29 @@ public sealed class ContainerService : IContainerService
         else if (result.Success)
         {
             progress?.Report($"Container '{request.ContainerName}' erstellt ({result.Duration:mm\\:ss}).");
+
+            // Metadaten speichern, damit das Verwaltungs-Tab das Zugangs-Popup
+            // mit Username/Passwort füllen kann. Fehler hier dürfen das
+            // Create-Ergebnis nicht ändern — nur loggen.
+            try
+            {
+                await _metadata.SaveAsync(
+                    containerName: request.ContainerName,
+                    createdAt: DateTimeOffset.UtcNow,
+                    authType: request.AuthType,
+                    username: request.Username,
+                    password: request.AuthType == AuthType.NavUserPassword ? request.Password : null,
+                    artifactType: request.ArtifactType,
+                    country: request.Country,
+                    versionSelector: request.Version,
+                    resolvedBuild: null,
+                    webClientUrl: $"http://{request.ContainerName}/BC?tenant=default",
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Konnte Container-Metadaten nicht speichern");
+            }
         }
         else
         {
@@ -247,9 +272,10 @@ public sealed class ContainerService : IContainerService
                     || image.Contains("bcsandbox", StringComparison.OrdinalIgnoreCase);
 
                 // BcContainerHelper trägt typischerweise einen Hostfile-Eintrag
-                // <name> -> Container-IP ein, sodass http://<name>/BC erreichbar ist.
+                // <name> -> Container-IP ein. Web-Client-URL inkl. Tenant-Query —
+                // BcContainerHelper-Output zeigt 'http://<name>/BC?tenant=default'.
                 var url = isBc && !string.IsNullOrWhiteSpace(name)
-                    ? $"http://{name}/BC"
+                    ? $"http://{name}/BC?tenant=default"
                     : null;
 
                 containers.Add(new ContainerInfo(id, name, image, status, isRunning, ports, url, isBc));
@@ -284,7 +310,15 @@ public sealed class ContainerService : IContainerService
         var quoted = QuoteForDocker(name);
         var forceFlag = force ? "-f " : string.Empty;
         var result = await _runner.ExecuteAsync($"docker rm {forceFlag}{quoted}; $LASTEXITCODE", cancellationToken: cancellationToken).ConfigureAwait(false);
-        return WasZeroExit(result);
+        var ok = WasZeroExit(result);
+        if (ok)
+        {
+            // Metadaten mitlöschen — sonst zeigt das Info-Popup für einen
+            // späteren gleichnamigen Container falsche alte Credentials.
+            try { await _metadata.DeleteAsync(name, cancellationToken).ConfigureAwait(false); }
+            catch { /* nicht kritisch */ }
+        }
+        return ok;
     }
 
     public async Task<string> GetContainerLogsAsync(string name, int tail = 1000, CancellationToken cancellationToken = default)

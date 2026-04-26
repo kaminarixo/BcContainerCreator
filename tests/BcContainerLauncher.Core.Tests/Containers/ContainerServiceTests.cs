@@ -5,6 +5,7 @@ using BcContainerLauncher.Core.Models;
 using BcContainerLauncher.Core.Tests.PowerShell;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 
 namespace BcContainerLauncher.Core.Tests.Containers;
 
@@ -21,7 +22,8 @@ public class ContainerServiceTests
     private static ContainerService CreateSut(out FakePowerShellRunner runner)
     {
         runner = new FakePowerShellRunner();
-        return new ContainerService(runner, NullLogger<ContainerService>.Instance);
+        var metadata = new Mock<IContainerMetadataStore>();
+        return new ContainerService(runner, metadata.Object, NullLogger<ContainerService>.Instance);
     }
 
     [Fact]

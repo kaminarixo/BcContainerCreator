@@ -67,7 +67,7 @@
                             <GridViewColumn Header="Name" Width="220" DisplayMemberBinding="{Binding Name}" />
                             <GridViewColumn Header="Image" Width="320" DisplayMemberBinding="{Binding Image}" />
                             <GridViewColumn Header="Status" Width="220" DisplayMemberBinding="{Binding Status}" />
-                            <GridViewColumn Header="" Width="470">
+                            <GridViewColumn Header="" Width="540">
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
@@ -80,6 +80,13 @@
                                                     Command="{Binding DataContext.OpenUrlCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                     CommandParameter="{Binding}"
                                                     ToolTip="{Binding WebClientUrl}" />
+                                            <Button Content="Info"
+                                                    Padding="12,4"
+                                                    Margin="0,0,6,0"
+                                                    MinWidth="70"
+                                                    ToolTip="Zugangsdaten anzeigen (URL, Benutzer, Passwort)"
+                                                    Command="{Binding DataContext.ShowInfoCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}" />
                                             <Button Content="Logs"
                                                     Padding="12,4"
                                                     Margin="0,0,6,0"

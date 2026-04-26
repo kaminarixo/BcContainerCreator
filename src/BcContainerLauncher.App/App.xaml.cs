@@ -88,6 +88,7 @@ public partial class App : Application
                 services.AddSingleton<IPreflightCheck, PreflightCheck>();
                 services.AddSingleton<IElevationService, ElevationService>();
                 services.AddSingleton<ISetupService, SetupService>();
+                services.AddSingleton<IContainerMetadataStore, ContainerMetadataStore>();
                 services.AddSingleton<IContainerService, ContainerService>();
 
                 // App-Services

@@ -18,6 +18,7 @@ namespace BcContainerLauncher.App.ViewModels;
 public sealed partial class ManageContainersViewModel : ObservableObject
 {
     private readonly IContainerService _containerService;
+    private readonly IContainerMetadataStore _metadata;
     private readonly IDialogService _dialogService;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<ManageContainersViewModel> _logger;
@@ -36,10 +37,12 @@ public sealed partial class ManageContainersViewModel : ObservableObject
 
     public ManageContainersViewModel(
         IContainerService containerService,
+        IContainerMetadataStore metadata,
         IDialogService dialogService,
         ILoggerFactory loggerFactory)
     {
         _containerService = containerService;
+        _metadata = metadata;
         _dialogService = dialogService;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<ManageContainersViewModel>();
@@ -157,6 +160,29 @@ public sealed partial class ManageContainersViewModel : ObservableObject
         {
             _logger.LogWarning(ex, "URL öffnen fehlgeschlagen");
             _dialogService.ShowMessage($"URL konnte nicht geöffnet werden: {ex.Message}", "Fehler", isError: true);
+        }
+    }
+
+    [RelayCommand]
+    private async Task ShowInfoAsync(ContainerInfoViewModel? vm)
+    {
+        if (vm is null) return;
+        try
+        {
+            var meta = await _metadata.LoadAsync(vm.Name);
+            var pwPlain = meta is null ? null : _metadata.DecryptPassword(meta.PasswordCipher);
+
+            var infoVm = new ContainerCredentialsViewModel(vm.Name, meta, pwPlain);
+            var window = new ContainerInfoWindow(infoVm)
+            {
+                Owner = Application.Current?.MainWindow
+            };
+            window.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Info-Window konnte nicht geöffnet werden");
+            _dialogService.ShowMessage(ex.Message, "Fehler", isError: true);
         }
     }
 
