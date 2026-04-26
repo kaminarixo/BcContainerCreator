@@ -1,40 +1,137 @@
+<div align="center">
+
+<img src="src/BcContainerCreator.App/Assets/logo.png" alt="BC Container Creator Logo" width="160" />
+
 # BC Container Creator
 
-Windows-Desktop-App (WPF, .NET 10), die per GUI Docker-Container für die Business-Central-Entwicklung erstellt und verwaltet — ohne dass man PowerShell oder `BcContainerHelper` direkt anfassen muss.
+**Business-Central-Docker-Container per GUI erstellen und verwalten — ohne PowerShell, ohne `BcContainerHelper`-Knowhow.**
 
-**Status:** Phase 1 (PoC mit tragfähiger Architektur). Container-Erstellung funktioniert; Container-Verwaltung kommt in Phase 2. Siehe [docs/ROADMAP.md](docs/ROADMAP.md).
+[![Latest Release](https://img.shields.io/github/v/release/kaminarixo/BcContainerCreator?label=Download&color=C8302A)](https://github.com/kaminarixo/BcContainerCreator/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)](https://dotnet.microsoft.com/download/dotnet/10.0)
+[![Platform: Windows](https://img.shields.io/badge/Platform-Windows-lightgrey)]()
+
+</div>
 
 ---
 
-## Quickstart
+## Was ist das?
+
+Ein Windows-Desktop-Tool, das BC-Entwicklern eine GUI gibt für alles, was sonst über `BcContainerHelper` per PowerShell läuft:
+
+- **Voraussetzungen prüfen + automatisch fixen** (Docker, BcContainerHelper, ExecutionPolicy, PSGallery, Windows-Edition, …)
+- **Container erstellen** mit Versions-Auswahl (BC LTS-Releases), MultiTenant, Memory-Limit, etc.
+- **Container verwalten** — Liste mit Live-Status, Start, Stop, Löschen, Web-Client öffnen, Logs ansehen
+- **Zugangsdaten-Popup** pro Container (URL, User, Passwort) — Passwort lokal DPAPI-verschlüsselt
+- **Standard-User-Modus** — App startet ohne UAC, einzelne Admin-Aktionen werden on-demand elevated (lokaler Admin via UAC-Prompt)
+
+Geschrieben für Teams, die von **NAV 2017 auf BC 28** migrieren und PowerShell-unsicher sind.
+
+---
+
+## Download &amp; Installation
+
+[**→ Aktuellen Setup von GitHub Releases laden**](https://github.com/kaminarixo/BcContainerCreator/releases/latest)
+
+1. `BcContainerCreator-Setup-x.y.z.exe` herunterladen
+2. Doppelklick → UAC-Prompt mit lokalem Admin (z. B. `.\admin`) bestätigen
+3. .NET-10-Desktop-Runtime-Check — fehlt sie, öffnet das Setup automatisch die Download-Seite
+4. Pfad-Auswahl, Start-Menü-Eintrag, optional Desktop-Icon
+5. Fertig
+
+### Voraussetzungen auf dem Zielrechner
+
+- **Windows 10/11 Pro / Enterprise / Education** (Home unterstützt keine Windows-Container — der Diagnose-Tab markiert das)
+- **.NET 10 Desktop Runtime (x64)** — der Installer prüft das und verlinkt den Download
+- **Docker Desktop im Windows-Container-Modus** — der Diagnose-Tab kann es per UAC-Prompt installieren / umschalten
+
+---
+
+## Features
+
+### Diagnose
+
+11 Voraussetzungs-Checks mit fixbaren Aktionen:
+
+- Ausführungs-Kontext (Admin / Standard-User)
+- Windows-Edition (Pro/Enterprise/Education vs. Home)
+- PowerShell-Version + ExecutionPolicy
+- NuGet-Provider, PSGallery-Trust
+- Docker installiert / läuft / im Windows-Modus
+- BcContainerHelper-Modul installiert
+- Kein konkurrierendes Legacy-Modul (`navcontainerhelper`)
+
+Fixes laufen mit `Microsoft.PowerShell.PSResourceGet` (modern, ohne den alten PowerShellGet-1.0.0.1-Bug unter PS7-In-Process). Wo nötig wird automatisch via UAC eskaliert.
+
+### Container erstellen
+
+- Versions-Dropdown mit `latest` + den letzten BC-LTS-Majors (28, 27, 26, …) inkl. konkret aufgelöstem Build
+- Country-Dropdown (DE/W1/AT/CH/US/…)
+- Auth-Typ: `NavUserPassword` (Default) oder `Windows`
+- Username default = aktueller Windows-User; Passwort mit Show/Hide-Toggle
+- Optionaler Lizenz-Pfad
+- Erweiterte Optionen: MultiTenant, TestToolkit, Memory-Limit, Isolation-Mode
+- Live-Output rechts mit Brand-Spinner-Overlay
+- Schließen während Erstellung läuft → Confirm-Dialog mit Cancel-Option
+
+### Container verwalten
+
+- Auto-Refresh (10s) der Container-Liste
+- Pro Container: **Web öffnen** (`http://&lt;name&gt;/BC?tenant=default`), **Info** (Zugangsdaten-Popup), **Logs** (separates Fenster mit tail-Selector), **Start / Stop**, **Löschen**
+
+### Logging &amp; Settings
+
+- File-Logs unter `%ProgramData%\BcContainerCreator\Logs\` — täglich rotierend, 14 Tage Retention
+- Live-Log-Tab mit Copy / Save / Auto-Scroll
+- Settings-Tab mit App-Version, OS-Info, Log-Folder-Open
+
+---
+
+## Architektur
+
+```
+src/
+  BcContainerCreator.Core/    Class Library — UI-frei, eine spätere CLI ist möglich
+    PowerShell/                IPowerShellRunner mit persistentem Runspace
+    Docker/                    IDockerService (CLI-Wrapper)
+    Setup/                     IPreflightCheck + ISetupService + IElevationService
+    Containers/                IContainerService + IContainerMetadataStore (DPAPI)
+    Models/                    Records: ContainerCreateRequest, CheckResult, …
+
+  BcContainerCreator.App/     WPF-Anwendung (.exe)
+    ViewModels/                MVVM mit CommunityToolkit.Mvvm
+    Views/                     UserControls + Modal-Windows
+    Services/                  DialogService, DispatcherProgress, PasswordBoxAssistant
+
+tests/
+  BcContainerCreator.Core.Tests/    27 xUnit-Tests
+```
+
+**Kern-Entscheidungen:**
+
+- **Microsoft.PowerShell.SDK 7.6** in-process — kein externer `pwsh.exe` nötig.
+- **Persistenter Runspace** — BcContainerHelper-Modul wird einmalig geladen.
+- **PSResourceGet-Bootstrap** für PSGallery-Operations — umgeht den `$script:IsWindows`-Bug von PowerShellGet 1.0.0.1 unter PS7.
+- **Passwörter als `SecureString`** im Code; im Container-Metadata-Store via DPAPI-CurrentUser verschlüsselt.
+- **`asInvoker`-Manifest** — App läuft als Standard-User. Admin nur on-demand über `Verb=runas`.
+
+---
+
+## Selbst bauen
 
 ### Voraussetzungen
 
-- Windows 10/11 mit Admin-Rechten
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
-- Docker Desktop im **Windows-Container-Modus** (die App prüft das und kann umschalten)
-- Optional: BC-Lizenz-Datei (`.flf` / `.bclicense`) — die App funktioniert auch ohne
+- Optional für den Installer: [Inno Setup 6](https://jrsoftware.org/isinfo.php) — `winget install --exact --id JRSoftware.InnoSetup --silent`
 
-### Bauen
+### Quick build
 
 ```powershell
 dotnet restore
 dotnet build
-```
-
-### Tests
-
-```powershell
 dotnet test
-```
-
-### Starten (Debug)
-
-```powershell
 dotnet run --project src/BcContainerCreator.App
 ```
-
-Die App startet als Administrator (UAC-Prompt) — sonst kann sie weder Docker steuern noch PSGallery-Module installieren.
 
 ### Single-File-Publish
 
@@ -45,106 +142,23 @@ dotnet publish src/BcContainerCreator.App `
   --self-contained false
 ```
 
-Output: `src/BcContainerCreator.App/bin/Release/net10.0-windows/win-x64/publish/BcContainerCreator.exe`
-
-`--self-contained false` setzt voraus, dass auf dem Zielrechner die .NET-10-Runtime installiert ist. Für eine Distribution ohne Runtime-Voraussetzung: `--self-contained true` (Output ist dann ~70 MB).
-
 ### Bundle-Installer (Setup.exe)
-
-Der Installer wird mit **Inno Setup 6** gebaut und prüft beim Start, ob die .NET-10-Desktop-Runtime installiert ist (mit Link zur Download-Seite, falls nicht).
-
-**Voraussetzung — Inno Setup einmalig installieren:**
-
-```powershell
-winget install --exact --id JRSoftware.InnoSetup --silent
-```
-
-**Installer bauen:**
 
 ```powershell
 pwsh build/build-installer.ps1
 # optional: -Version 1.2.3
 ```
 
-Das Skript räumt `dist/publish/` auf, ruft `dotnet publish`, kompiliert das Inno-Setup-Skript (`installer/BcContainerCreator.iss`) und legt das Ergebnis hier ab:
-
-```
-dist/BcContainerCreator-Setup-<version>.exe
-```
-
-Diese eine Datei kannst du an Kollegen weitergeben. Beim Doppelklick:
-
-1. UAC-Prompt (Setup verlangt Admin)
-2. .NET-10-Desktop-Runtime-Check — falls fehlt, Hinweis + Download-Link
-3. Pfad-Auswahl (default `%ProgramFiles%\BcContainerCreator`)
-4. Optional: Desktop-Icon
-5. Start-Menü-Eintrag inkl. "Logs öffnen"-Shortcut
-6. Optional: App direkt starten
-
-Deinstallieren via Apps & Features wie gewohnt.
+→ `dist/BcContainerCreator-Setup-<version>.exe` (≈12 MB)
 
 ---
 
-## Architektur
+## Roadmap
 
-```
-src/
-  BcContainerCreator.Core/    Class Library (UI-frei, theoretisch CLI-fähig)
-    PowerShell/                IPowerShellRunner mit persistentem Runspace
-    Docker/                    IDockerService (CLI-Wrapper)
-    Setup/                     IPreflightCheck + ISetupService
-    Containers/                IContainerService (New-BcContainer-Wrapper)
-    Models/                    Records: ContainerCreateRequest, CheckResult, …
-
-  BcContainerCreator.App/     WPF-Anwendung (.exe)
-    ViewModels/                MVVM mit CommunityToolkit.Mvvm
-    Views/                     UserControls pro Tab
-    Services/                  DialogService, DispatcherProgress, PasswordBoxAssistant
-    Logging/                   InMemoryLogSink für Live-Log-Tab
-    Converters/                XAML-Value-Converter
-
-tests/
-  BcContainerCreator.Core.Tests/
-```
-
-**Designprinzipien:**
-
-- **Core ist UI-frei** — keine WPF-Abhängigkeit, eine spätere CLI ist möglich.
-- **Persistenter PowerShell-Runspace** — `BcContainerHelper`-Modul wird einmalig geladen, nicht pro Aufruf (sonst je ~5s Overhead).
-- **Streaming-Output** — alle PS-Streams (Information/Warning/Error/Verbose/Progress) werden live in die UI gepusht.
-- **Cancellation überall** — alle lang laufenden Operationen nehmen `CancellationToken`.
-- **Passwörter als `SecureString`** — niemals als Plain-String im Skript, sondern als injizierte Runspace-Variable.
+Siehe [docs/ROADMAP.md](docs/ROADMAP.md) für die geplanten Phasen (Container-Verwaltung-Erweiterungen, Profile, Auto-Update, MSI-Distribution, …).
 
 ---
 
-## Decisions / Known Issues
+## Lizenz
 
-- **`Microsoft.PowerShell.SDK` 7.6.1** ist mit .NET 10 kompatibel — kein Fallback auf `Process.Start("pwsh.exe", …)` nötig.
-- **`pwsh.exe` ist nicht erforderlich.** Die App nutzt In-Process PowerShell via SDK; Windows PowerShell 5.1 muss aber als Host-Voraussetzung vorhanden sein (auf jedem Windows 10/11 default).
-- **Core-TargetFramework `net10.0-windows`** statt `net10.0`: PowerShell.SDK zieht Windows-spezifische Abhängigkeiten (PSReadLine, PerformanceCounter), und der `WindowsPrincipal`-Admin-Check braucht Windows-API.
-- **`FluentAssertions 7.2.0`** statt 8.x — ab 8.0.0 nicht mehr Apache-2.0, sondern kommerziell. 7.2.0 ist die letzte freie Version.
-- **`requireAdministrator`** im Manifest erzwingt UAC. Lokal entwickeln: VS/Rider als Admin starten, sonst schlägt `dotnet run` mit Permission-Errors fehl.
-
----
-
-## Was Phase 1 enthält
-
-- Diagnose-Tab mit 10 Voraussetzungs-Checks und automatischen Fix-Aktionen
-- Container-Erstellen-Tab mit Validierung, Live-Output und Cancellation
-- Live-Log-Tab mit Filter, Copy, Save
-- DI-Container, Serilog (File + In-Memory), persistenter PowerShell-Runspace
-- 24 Unit-Tests (xUnit + FluentAssertions + Moq)
-
-## Was Phase 1 NICHT enthält
-
-- Verwaltung bestehender Container (Start/Stop/Remove) — Tab ist Placeholder
-- Speicherbare Profile, Theme-Switching, Settings-Tab — Placeholder
-- Auto-Updater, Installer
-
-Siehe [docs/ROADMAP.md](docs/ROADMAP.md) für die geplante Roadmap.
-
----
-
-## Logs
-
-Logfiles unter `%ProgramData%\BcContainerCreator\Logs\` — tagesrotierend, 14 Tage Retention.
+[MIT](LICENSE) — Copyright © 2026 HKR IT Solutions
