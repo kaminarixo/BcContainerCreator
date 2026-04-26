@@ -85,7 +85,7 @@ public sealed class SetupService : ISetupService
         var tempScript = Path.Combine(Path.GetTempPath(), $"bccl-docker-install-{Guid.NewGuid():N}.ps1");
         const string script = """
             $ErrorActionPreference = 'Stop'
-            Write-Host '== BC Container Launcher: Docker Desktop Setup =='
+            Write-Host '== BC Container Creator: Docker Desktop Setup =='
 
             $winget = Get-Command winget -ErrorAction SilentlyContinue
             if (-not $winget) {

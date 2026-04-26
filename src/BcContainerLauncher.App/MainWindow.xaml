@@ -7,7 +7,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="BC Container Launcher"
+        Title="BC Container Creator"
         Height="780" Width="1180"
         MinHeight="560" MinWidth="900"
         WindowStartupLocation="CenterScreen"
@@ -40,7 +40,7 @@
                        RenderOptions.BitmapScalingMode="HighQuality" />
 
                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="BC Container Launcher"
+                    <TextBlock Text="BC Container Creator"
                                Foreground="White"
                                FontSize="18"
                                FontWeight="SemiBold" />

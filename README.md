@@ -1,4 +1,4 @@
-# BC Container Launcher
+# BC Container Creator
 
 Windows-Desktop-App (WPF, .NET 10), die per GUI Docker-Container für die Business-Central-Entwicklung erstellt und verwaltet — ohne dass man PowerShell oder `BcContainerHelper` direkt anfassen muss.
 

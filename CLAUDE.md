@@ -1,4 +1,4 @@
-# CLAUDE.md — BC Container Launcher
+# CLAUDE.md — BC Container Creator
 
 Projekt-Kontext und Konventionen für künftige Claude-Code-Sessions in diesem Repo.
 

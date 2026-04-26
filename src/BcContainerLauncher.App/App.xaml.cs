@@ -72,7 +72,7 @@ public partial class App : Application
             .WriteTo.Sink(sink)
             .CreateLogger();
 
-        Log.Information("BC Container Launcher startet (PID {Pid}, OS {OS})",
+        Log.Information("BC Container Creator startet (PID {Pid}, OS {OS})",
             Environment.ProcessId, Environment.OSVersion);
 
         _host = Host.CreateDefaultBuilder()
@@ -171,7 +171,7 @@ public partial class App : Application
         }
         finally
         {
-            Log.Information("BC Container Launcher beendet");
+            Log.Information("BC Container Creator beendet");
             await Log.CloseAndFlushAsync();
         }
         base.OnExit(e);

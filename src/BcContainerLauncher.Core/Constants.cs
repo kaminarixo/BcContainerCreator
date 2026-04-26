@@ -1,7 +1,7 @@
 namespace BcContainerLauncher.Core;
 
 /// <summary>
-/// Globale Konstanten für die BC Container Launcher Core-Library.
+/// Globale Konstanten für die BC Container Creator Core-Library.
 /// </summary>
 public static class Constants
 {
