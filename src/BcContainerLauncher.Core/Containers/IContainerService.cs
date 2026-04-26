@@ -16,22 +16,14 @@ public interface IContainerService
     string BuildCreateScript(ContainerCreateRequest request);
 
     /// <summary>
-    /// Holt die zuletzt verfügbaren Artifact-Versionen für Type+Country.
-    /// Sortiert absteigend, eindeutig, max <paramref name="top"/> Einträge.
+    /// Liefert eine Liste auswählbarer Major-Versionen (BC LTS-Releases).
+    /// Erster Eintrag ist immer "latest"; danach die jüngsten N Major-Versionen
+    /// (28, 27, 26, …) jeweils mit der konkret aufgelösten Build-Version.
     /// </summary>
-    Task<IReadOnlyList<string>> GetAvailableVersionsAsync(
+    Task<IReadOnlyList<ArtifactVersionOption>> GetVersionOptionsAsync(
         ArtifactType type,
         string country,
-        int top = 15,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Löst "latest" zur konkreten Versionsnummer auf (z. B. "26.0.1234.5678").
-    /// Liefert null, wenn keine URL gefunden wird.
-    /// </summary>
-    Task<string?> ResolveLatestVersionAsync(
-        ArtifactType type,
-        string country,
+        int topMajors = 6,
         CancellationToken cancellationToken = default);
 
     /// <summary>Listet alle vorhandenen Container (laufend + gestoppt).</summary>

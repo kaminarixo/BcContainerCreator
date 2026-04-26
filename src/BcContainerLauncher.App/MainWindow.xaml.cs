@@ -1,6 +1,8 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using BcContainerLauncher.App.ViewModels;
 using BcContainerLauncher.Core.Setup;
 
 namespace BcContainerLauncher.App;
@@ -12,6 +14,38 @@ public partial class MainWindow : Window
         InitializeComponent();
         TryLoadBrandAssets();
         ApplyContextBadge();
+        Closing += OnClosing;
+    }
+
+    private void OnClosing(object? sender, CancelEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm) return;
+
+        if (vm.CreateContainer.IsRunning)
+        {
+            var result = MessageBox.Show(
+                this,
+                "Eine Container-Erstellung läuft aktuell.\n\n" +
+                "Wenn du jetzt schließt, wird sie abgebrochen — ein eventuell halb erzeugter Docker-Container bleibt zurück und muss ggf. manuell entfernt werden.\n\n" +
+                "Trotzdem schließen?",
+                "Erstellung läuft noch",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No);
+
+            if (result != MessageBoxResult.Yes)
+            {
+                e.Cancel = true;
+                return;
+            }
+
+            // User hat Schließen bestätigt — Cancel-Token feuern, damit der
+            // PowerShell-Runspace sauber abgeräumt wird.
+            if (vm.CreateContainer.CancelCommand.CanExecute(null))
+            {
+                vm.CreateContainer.CancelCommand.Execute(null);
+            }
+        }
     }
 
     private void ApplyContextBadge()

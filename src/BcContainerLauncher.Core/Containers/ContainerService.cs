@@ -144,16 +144,16 @@ public sealed class ContainerService : IContainerService
         return result;
     }
 
-    public async Task<IReadOnlyList<string>> GetAvailableVersionsAsync(
+    public async Task<IReadOnlyList<ArtifactVersionOption>> GetVersionOptionsAsync(
         ArtifactType type,
         string country,
-        int top = 15,
+        int topMajors = 6,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(country);
-        if (top <= 0)
+        if (topMajors <= 0)
         {
-            return Array.Empty<string>();
+            return Array.Empty<ArtifactVersionOption>();
         }
 
         var typeArg = type == ArtifactType.Sandbox ? "Sandbox" : "OnPrem";
@@ -163,44 +163,47 @@ public sealed class ContainerService : IContainerService
             $versions = $urls |
                 ForEach-Object {
                     if ($_ -match '/(\d+\.\d+\.\d+\.\d+)/[^/]+/?$') { $matches[1] }
-                } |
-                Sort-Object -Unique -Property { [Version]$_ } -Descending |
-                Select-Object -First {{top}}
-            $versions
+                }
+            # Pro Major-Version den jüngsten Build wählen.
+            $byMajor = $versions | Group-Object { ($_ -split '\.')[0] }
+            $rows = $byMajor | ForEach-Object {
+                $latest = $_.Group | Sort-Object -Property { [Version]$_ } -Descending | Select-Object -First 1
+                "$($_.Name)|$latest"
+            } | Sort-Object -Property { [int]($_ -split '\|')[0] } -Descending |
+                Select-Object -First {{topMajors}}
+            $rows
             """;
 
         var result = await _runner.ExecuteAsync(script, cancellationToken: cancellationToken).ConfigureAwait(false);
         if (!result.Success)
         {
-            _logger.LogWarning("GetAvailableVersionsAsync fehlgeschlagen: {Errors}", string.Join("; ", result.Errors));
-            return Array.Empty<string>();
+            _logger.LogWarning("GetVersionOptionsAsync fehlgeschlagen: {Errors}", string.Join("; ", result.Errors));
+            return Array.Empty<ArtifactVersionOption>();
         }
-        return result.Objects
-            .Select(o => o?.ToString() ?? string.Empty)
-            .Where(v => !string.IsNullOrWhiteSpace(v))
-            .ToList();
-    }
 
-    public async Task<string?> ResolveLatestVersionAsync(
-        ArtifactType type,
-        string country,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(country);
-
-        var typeArg = type == ArtifactType.Sandbox ? "Sandbox" : "OnPrem";
-        var script =
-            $"Import-Module {Constants.BcContainerHelperModule} -ErrorAction Stop\n" +
-            $"$url = Get-BCArtifactUrl -type {typeArg} -country '{country}' -select Latest -ErrorAction SilentlyContinue\n" +
-            "if ($url -and ($url -match '/(\\d+\\.\\d+\\.\\d+\\.\\d+)/[^/]+/?$')) { $matches[1] }";
-
-        var result = await _runner.ExecuteAsync(script, cancellationToken: cancellationToken).ConfigureAwait(false);
-        if (!result.Success)
+        var options = new List<ArtifactVersionOption>();
+        string? newestBuild = null;
+        foreach (var obj in result.Objects)
         {
-            _logger.LogWarning("ResolveLatestVersionAsync fehlgeschlagen: {Errors}", string.Join("; ", result.Errors));
-            return null;
+            var raw = obj?.ToString();
+            if (string.IsNullOrWhiteSpace(raw)) continue;
+            var parts = raw.Split('|', 2);
+            if (parts.Length < 2) continue;
+            var major = parts[0].Trim();
+            var latest = parts[1].Trim();
+            if (string.IsNullOrEmpty(major) || string.IsNullOrEmpty(latest)) continue;
+            options.Add(new ArtifactVersionOption(Selector: major, LatestBuild: latest));
+            // Erste (höchste) Major-Version liefert den 'latest'-Build.
+            newestBuild ??= latest;
         }
-        return result.Objects.FirstOrDefault()?.ToString();
+
+        // 'latest' immer als Synonym der jüngsten Major obenan.
+        var withLatest = new List<ArtifactVersionOption>(options.Count + 1)
+        {
+            new("latest", newestBuild)
+        };
+        withLatest.AddRange(options);
+        return withLatest;
     }
 
     public async Task<IReadOnlyList<ContainerInfo>> ListContainersAsync(CancellationToken cancellationToken = default)

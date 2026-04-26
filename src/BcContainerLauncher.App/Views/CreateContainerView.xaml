@@ -14,7 +14,9 @@
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
+        <!-- Eingabeformular: wird gesperrt während Erstellung läuft -->
+        <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto"
+                      IsEnabled="{Binding IsRunning, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
             <StackPanel>
                 <TextBlock Text="Container-Konfiguration" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8" />
 
@@ -35,7 +37,7 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <Label Grid.Column="0" Content="Version" />
+                    <Label Grid.Column="0" Content="Version (BC LTS)" />
                     <Button Grid.Column="1"
                             Content="Aktualisieren"
                             Padding="8,2"
@@ -44,7 +46,7 @@
                 </Grid>
                 <ComboBox ItemsSource="{Binding AvailableVersions}"
                           SelectedItem="{Binding SelectedVersion}"
-                          IsEditable="True" />
+                          DisplayMemberPath="Display" />
                 <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                     <TextBlock Text="Lade Versionen…"
                                FontSize="11"
@@ -53,8 +55,8 @@
                     <TextBlock FontSize="11"
                                Foreground="{StaticResource TextMuted}"
                                Visibility="{Binding IsLoadingVersions, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
-                        <Run Text="latest = " />
-                        <Run Text="{Binding LatestResolvedVersion, FallbackValue=unbekannt, TargetNullValue=unbekannt}"
+                        <Run Text="Aufgelöst: " />
+                        <Run Text="{Binding ResolvedBuild, FallbackValue=unbekannt, TargetNullValue=unbekannt, Mode=OneWay}"
                              FontWeight="SemiBold" />
                     </TextBlock>
                 </StackPanel>
@@ -108,36 +110,81 @@
                             Style="{StaticResource PrimaryButton}"
                             Margin="0,0,8,0"
                             Command="{Binding CreateCommand}" />
-                    <Button Content="Abbrechen"
-                            Command="{Binding CancelCommand}" />
                 </StackPanel>
             </StackPanel>
         </ScrollViewer>
 
-        <Border Grid.Column="2"
-                Background="#101010"
-                BorderBrush="{StaticResource PanelBorder}"
-                BorderThickness="1">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Text="Live-Output"
-                           Foreground="#CCC" Padding="8,4"
-                           FontFamily="{StaticResource MonoFont}" />
-                <TextBox Grid.Row="1"
-                         Text="{Binding Output, Mode=OneWay}"
-                         IsReadOnly="True"
-                         Background="Transparent"
-                         Foreground="#DDDDDD"
-                         BorderThickness="0"
-                         FontFamily="{StaticResource MonoFont}"
-                         FontSize="12"
-                         VerticalScrollBarVisibility="Auto"
-                         HorizontalScrollBarVisibility="Auto"
-                         TextWrapping="NoWrap" />
-            </Grid>
-        </Border>
+        <!-- Live-Output rechts; Working-Overlay drüber wenn IsRunning -->
+        <Grid Grid.Column="2">
+            <Border Background="#101010"
+                    BorderBrush="{StaticResource PanelBorder}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource CardCorner}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="Live-Output"
+                               Foreground="#CCC" Padding="12,6"
+                               FontFamily="{StaticResource MonoFont}" />
+                    <TextBox Grid.Row="1"
+                             Text="{Binding Output, Mode=OneWay}"
+                             IsReadOnly="True"
+                             Background="Transparent"
+                             Foreground="#DDDDDD"
+                             BorderThickness="0"
+                             Padding="12,4,12,12"
+                             FontFamily="{StaticResource MonoFont}"
+                             FontSize="12"
+                             VerticalScrollBarVisibility="Auto"
+                             HorizontalScrollBarVisibility="Auto"
+                             TextWrapping="NoWrap" />
+                </Grid>
+            </Border>
+
+            <!-- Working-Overlay: halb-transparent, drehendes Logo, Cancel-Button -->
+            <Border Background="#CC101010"
+                    CornerRadius="{StaticResource CardCorner}"
+                    Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Image Source="pack://application:,,,/Assets/logo.png"
+                           Width="96" Height="96"
+                           RenderOptions.BitmapScalingMode="HighQuality"
+                           HorizontalAlignment="Center">
+                        <Image.RenderTransform>
+                            <RotateTransform x:Name="SpinnerRotation" Angle="0" CenterX="48" CenterY="48" />
+                        </Image.RenderTransform>
+                        <Image.Triggers>
+                            <EventTrigger RoutedEvent="Image.Loaded">
+                                <BeginStoryboard>
+                                    <Storyboard RepeatBehavior="Forever">
+                                        <DoubleAnimation Storyboard.TargetName="SpinnerRotation"
+                                                         Storyboard.TargetProperty="Angle"
+                                                         From="0" To="360"
+                                                         Duration="0:0:2.5" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                        </Image.Triggers>
+                    </Image>
+                    <TextBlock Text="Container wird erstellt …"
+                               Foreground="White"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               HorizontalAlignment="Center"
+                               Margin="0,18,0,4" />
+                    <TextBlock Text="Erster Start lädt das BC-Image (~10–15 GB) — kann mehrere Minuten dauern."
+                               Foreground="#BFBFBF"
+                               FontSize="12"
+                               HorizontalAlignment="Center" />
+                    <Button Content="Abbrechen"
+                            Margin="0,22,0,0"
+                            HorizontalAlignment="Center"
+                            MinWidth="140"
+                            Command="{Binding CancelCommand}" />
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>

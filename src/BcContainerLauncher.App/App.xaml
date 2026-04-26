@@ -312,7 +312,9 @@
                                         <Condition Property="IsMouseOver" Value="True" />
                                     </MultiTrigger.Conditions>
                                     <Setter Property="Foreground" Value="White" />
-                                    <Setter TargetName="Bd" Property="Background" Value="#262626" />
+                                    <Setter TargetName="Bd" Property="Background" Value="#3D3D3D" />
+                                    <Setter TargetName="Indicator" Property="Visibility" Value="Visible" />
+                                    <Setter TargetName="Indicator" Property="Opacity" Value="0.4" />
                                 </MultiTrigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>

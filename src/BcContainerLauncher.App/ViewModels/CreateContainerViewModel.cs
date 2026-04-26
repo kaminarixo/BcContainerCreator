@@ -38,11 +38,11 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
         new[] { AuthType.NavUserPassword, AuthType.Windows };
 
     /// <summary>
-    /// Liste der verfügbaren Versionen — "latest" steht immer ganz oben,
-    /// danach die letzten X konkret aufgelösten Versionen.
+    /// Liste der wählbaren Versionen: "latest" + die letzten N BC-Major-Releases,
+    /// jeweils mit dem konkret aufgelösten neuesten Build.
     /// </summary>
-    public ObservableCollection<string> AvailableVersions { get; } =
-        new() { LatestVersionToken };
+    public ObservableCollection<ArtifactVersionOption> AvailableVersions { get; } =
+        new() { new ArtifactVersionOption(LatestVersionToken, null) };
 
     [ObservableProperty]
     [NotifyDataErrorInfo]
@@ -63,11 +63,14 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CreateCommand))]
-    private string _selectedVersion = LatestVersionToken;
+    private ArtifactVersionOption _selectedVersion = new(LatestVersionToken, null);
 
-    /// <summary>Anzeige der konkret aufgelösten "latest"-Version, z. B. "26.0.1234.5678".</summary>
-    [ObservableProperty]
-    private string? _latestResolvedVersion;
+    /// <summary>
+    /// Anzeige der konkret aufgelösten Version der aktuellen Auswahl
+    /// (z. B. "28.0.46665.49591"). Aktualisiert sich live mit
+    /// <see cref="SelectedVersion"/>.
+    /// </summary>
+    public string? ResolvedBuild => SelectedVersion?.LatestBuild;
 
     [ObservableProperty]
     private bool _isLoadingVersions;
@@ -129,28 +132,23 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
         IsLoadingVersions = true;
         try
         {
-            var versionsTask = _containerService.GetAvailableVersionsAsync(SelectedArtifactType, SelectedCountry, top: 12, ct);
-            var latestTask = _containerService.ResolveLatestVersionAsync(SelectedArtifactType, SelectedCountry, ct);
-
-            var versions = await versionsTask;
-            var latest = await latestTask;
-
+            var options = await _containerService.GetVersionOptionsAsync(SelectedArtifactType, SelectedCountry, topMajors: 6, ct);
             ct.ThrowIfCancellationRequested();
 
-            // "latest" bleibt immer als erster Eintrag, dann die konkreten Versionen.
+            var prevSelector = SelectedVersion?.Selector;
             AvailableVersions.Clear();
-            AvailableVersions.Add(LatestVersionToken);
-            foreach (var v in versions)
+            foreach (var opt in options)
             {
-                AvailableVersions.Add(v);
+                AvailableVersions.Add(opt);
+            }
+            if (AvailableVersions.Count == 0)
+            {
+                AvailableVersions.Add(new ArtifactVersionOption(LatestVersionToken, null));
             }
 
-            LatestResolvedVersion = latest;
-
-            if (!AvailableVersions.Contains(SelectedVersion))
-            {
-                SelectedVersion = LatestVersionToken;
-            }
+            // Bisherige Auswahl beibehalten, falls noch da; sonst auf 'latest'.
+            var keep = AvailableVersions.FirstOrDefault(o => string.Equals(o.Selector, prevSelector, StringComparison.OrdinalIgnoreCase));
+            SelectedVersion = keep ?? AvailableVersions[0];
         }
         catch (OperationCanceledException) { /* refresh-superseded */ }
         catch (Exception ex)
@@ -162,6 +160,8 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
             IsLoadingVersions = false;
         }
     }
+
+    partial void OnSelectedVersionChanged(ArtifactVersionOption value) => OnPropertyChanged(nameof(ResolvedBuild));
 
     [RelayCommand]
     private void PickLicenseFile()
@@ -205,7 +205,7 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
                 ContainerName: ContainerName,
                 ArtifactType: SelectedArtifactType,
                 Country: SelectedCountry,
-                Version: SelectedVersion,
+                Version: SelectedVersion?.Selector ?? LatestVersionToken,
                 AuthType: SelectedAuthType,
                 Username: Username,
                 Password: ToSecureString(Password),
@@ -256,7 +256,7 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
         && !HasErrors
         && !string.IsNullOrWhiteSpace(ContainerName)
         && !string.IsNullOrWhiteSpace(SelectedCountry)
-        && !string.IsNullOrWhiteSpace(SelectedVersion)
+        && SelectedVersion is not null
         && (SelectedAuthType == AuthType.Windows || (!string.IsNullOrEmpty(Password) && !string.IsNullOrWhiteSpace(Username)));
 
     private bool CanCancel() => IsRunning;
