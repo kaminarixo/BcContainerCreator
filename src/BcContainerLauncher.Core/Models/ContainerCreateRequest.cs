@@ -20,6 +20,7 @@ namespace BcContainerLauncher.Core.Models;
 /// <param name="IncludeTestToolkit">TestToolkit installieren (Phase 1: false).</param>
 /// <param name="MemoryLimit">Optionales RAM-Limit (z. B. "8G"). Null = kein Limit.</param>
 /// <param name="Isolation">Isolation-Mode: "process", "hyperv" oder null (Default).</param>
+/// <param name="Multitenant">Multitenant-Container (mehrere BC-Tenants in einem Container).</param>
 public sealed record ContainerCreateRequest(
     string ContainerName,
     ArtifactType ArtifactType,
@@ -33,4 +34,5 @@ public sealed record ContainerCreateRequest(
     bool IncludeAL = true,
     bool IncludeTestToolkit = false,
     string? MemoryLimit = null,
-    string? Isolation = null);
+    string? Isolation = null,
+    bool Multitenant = false);

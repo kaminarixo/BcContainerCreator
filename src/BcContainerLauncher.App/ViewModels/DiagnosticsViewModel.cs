@@ -40,26 +40,22 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
         _cts = new CancellationTokenSource();
         IsRunning = true;
         StatusText = "Prüfe Voraussetzungen…";
-        Checks.Clear();
-        RunAllCommand.NotifyCanExecuteChanged();
-        FixAllCommand.NotifyCanExecuteChanged();
 
         try
         {
-            // Map über CheckId, damit wiederholte Läufe dieselbe Row aktualisieren.
-            var byName = new Dictionary<string, CheckResultViewModel>(StringComparer.Ordinal);
-            var progress = new DispatcherProgress<Core.Models.CheckResult>(r =>
-            {
-                if (!byName.TryGetValue(r.Name, out var vm))
-                {
-                    vm = new CheckResultViewModel();
-                    byName[r.Name] = vm;
-                    Checks.Add(vm);
-                }
-                vm.Apply(r);
-            });
+            // Sammle alles im PreflightCheck und übernehme die Liste danach
+            // atomic in die UI. Live-Reports waren rennanfällig: zwei kurz
+            // hintereinander gestartete RunAlls überlappten und führten zu
+            // 11 → 10 → 9 statt stabil 11.
+            var results = await _preflight.RunAllAsync(progress: null, _cts.Token);
 
-            await _preflight.RunAllAsync(progress, _cts.Token);
+            Checks.Clear();
+            foreach (var r in results)
+            {
+                var vm = new CheckResultViewModel();
+                vm.Apply(r);
+                Checks.Add(vm);
+            }
             StatusText = $"Fertig. {Checks.Count(c => c.Status == Core.Models.CheckStatus.Ok)}/{Checks.Count} OK.";
         }
         catch (OperationCanceledException)
@@ -74,8 +70,6 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
         finally
         {
             IsRunning = false;
-            RunAllCommand.NotifyCanExecuteChanged();
-            FixAllCommand.NotifyCanExecuteChanged();
         }
     }
 

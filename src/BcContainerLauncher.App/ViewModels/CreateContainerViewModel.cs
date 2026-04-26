@@ -103,7 +103,28 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
     private bool _includeAL = true;
 
     [ObservableProperty]
+    private bool _includeTestToolkit;
+
+    [ObservableProperty]
+    private bool _multitenant;
+
+    public IReadOnlyList<string> IsolationModes { get; } = new[] { "(Standard)", "process", "hyperv" };
+
+    [ObservableProperty]
+    private string _selectedIsolation = "(Standard)";
+
+    /// <summary>z. B. "8G", "16G". Leer = kein Limit.</summary>
+    [ObservableProperty]
+    private string _memoryLimit = string.Empty;
+
+    [ObservableProperty]
+    private bool _showAdvanced;
+
+    [ObservableProperty]
     private bool _isRunning;
+
+    /// <summary>Hilfs-Property für IsEnabled-Bindings — invertiert <see cref="IsRunning"/>.</summary>
+    public bool IsCreateFormEnabled => !IsRunning;
 
     [ObservableProperty]
     private string _output = string.Empty;
@@ -201,6 +222,10 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
 
         try
         {
+            var isolation = string.Equals(SelectedIsolation, "(Standard)", StringComparison.OrdinalIgnoreCase)
+                ? null
+                : SelectedIsolation;
+
             var request = new ContainerCreateRequest(
                 ContainerName: ContainerName,
                 ArtifactType: SelectedArtifactType,
@@ -211,7 +236,11 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
                 Password: ToSecureString(Password),
                 LicenseFilePath: string.IsNullOrWhiteSpace(LicenseFilePath) ? null : LicenseFilePath,
                 AcceptEula: AcceptEula,
-                IncludeAL: IncludeAL);
+                IncludeAL: IncludeAL,
+                IncludeTestToolkit: IncludeTestToolkit,
+                MemoryLimit: string.IsNullOrWhiteSpace(MemoryLimit) ? null : MemoryLimit.Trim(),
+                Isolation: isolation,
+                Multitenant: Multitenant);
 
             var progress = new DispatcherProgress<string>(line =>
             {
@@ -261,7 +290,11 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
 
     private bool CanCancel() => IsRunning;
 
-    partial void OnIsRunningChanged(bool value) => CancelCommand.NotifyCanExecuteChanged();
+    partial void OnIsRunningChanged(bool value)
+    {
+        CancelCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(IsCreateFormEnabled));
+    }
 
     // Versions-Liste neu laden, wenn ArtifactType oder Country wechselt.
     partial void OnSelectedArtifactTypeChanged(ArtifactType value) => _ = RefreshVersionsAsync();

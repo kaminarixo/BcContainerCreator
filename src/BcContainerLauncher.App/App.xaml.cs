@@ -98,6 +98,7 @@ public partial class App : Application
                 services.AddSingleton<CreateContainerViewModel>();
                 services.AddSingleton<ManageContainersViewModel>();
                 services.AddSingleton<LogViewModel>();
+                services.AddSingleton<SettingsViewModel>();
                 services.AddSingleton<MainViewModel>();
 
                 // MainWindow

@@ -11,6 +11,7 @@ public sealed partial class MainViewModel : ObservableObject
     public CreateContainerViewModel CreateContainer { get; }
     public ManageContainersViewModel ManageContainers { get; }
     public LogViewModel Log { get; }
+    public SettingsViewModel Settings { get; }
 
     [ObservableProperty]
     private int _selectedTabIndex;
@@ -19,11 +20,13 @@ public sealed partial class MainViewModel : ObservableObject
         DiagnosticsViewModel diagnostics,
         CreateContainerViewModel createContainer,
         ManageContainersViewModel manageContainers,
-        LogViewModel log)
+        LogViewModel log,
+        SettingsViewModel settings)
     {
         Diagnostics = diagnostics;
         CreateContainer = createContainer;
         ManageContainers = manageContainers;
         Log = log;
+        Settings = settings;
     }
 }

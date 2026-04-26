@@ -99,6 +99,11 @@ public sealed class ContainerService : IContainerService
             sb.Append($"-isolation {Quote(request.Isolation!)} ");
         }
 
+        if (request.Multitenant)
+        {
+            sb.Append("-multitenant ");
+        }
+
         sb.AppendLine("-updateHosts");
 
         return sb.ToString();

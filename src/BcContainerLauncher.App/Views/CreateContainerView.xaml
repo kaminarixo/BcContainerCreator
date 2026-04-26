@@ -16,7 +16,7 @@
 
         <!-- Eingabeformular: wird gesperrt während Erstellung läuft -->
         <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto"
-                      IsEnabled="{Binding IsRunning, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
+                      IsEnabled="{Binding IsCreateFormEnabled}">
             <StackPanel>
                 <TextBlock Text="Container-Konfiguration" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8" />
 
@@ -105,7 +105,31 @@
                 <CheckBox Content="AL-Tooling einbinden (includeAL)" Margin="0,4,0,0"
                           IsChecked="{Binding IncludeAL}" />
 
-                <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
+                <!-- Erweiterte Optionen: zusammenklappbar, damit der Tab beim Erst-Use nicht überfrachtet ist -->
+                <Expander Header="Erweiterte Optionen"
+                          Margin="0,16,0,0"
+                          IsExpanded="{Binding ShowAdvanced}"
+                          FontWeight="SemiBold"
+                          Foreground="{StaticResource TextMuted}">
+                    <StackPanel Margin="0,8,0,0">
+                        <CheckBox Content="Multitenant (mehrere BC-Mandanten im Container)"
+                                  IsChecked="{Binding Multitenant}"
+                                  FontWeight="Normal" />
+                        <CheckBox Content="TestToolkit installieren"
+                                  Margin="0,6,0,0"
+                                  IsChecked="{Binding IncludeTestToolkit}"
+                                  FontWeight="Normal" />
+
+                        <Label Content="Speicher-Limit (z. B. 8G, 16G — leer = unbegrenzt)" Margin="0,12,0,0" />
+                        <TextBox Text="{Binding MemoryLimit, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <Label Content="Isolation-Mode" Margin="0,12,0,0" />
+                        <ComboBox ItemsSource="{Binding IsolationModes}"
+                                  SelectedItem="{Binding SelectedIsolation}" />
+                    </StackPanel>
+                </Expander>
+
+                <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
                     <Button Content="Container erstellen"
                             Style="{StaticResource PrimaryButton}"
                             Margin="0,0,8,0"

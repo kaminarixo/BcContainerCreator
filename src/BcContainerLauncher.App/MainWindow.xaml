@@ -11,6 +11,7 @@
         Height="780" Width="1180"
         MinHeight="560" MinWidth="900"
         WindowStartupLocation="CenterScreen"
+        WindowState="Maximized"
         Background="{StaticResource Surface}">
 
     <Grid>
@@ -103,7 +104,7 @@
             </TabItem>
             <TabItem Header="Einstellungen">
                 <Border Background="{StaticResource Surface}">
-                    <views:PlaceholderView Tag="Einstellungen" />
+                    <views:SettingsView DataContext="{Binding Settings}" />
                 </Border>
             </TabItem>
         </TabControl>
