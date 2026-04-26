@@ -31,7 +31,7 @@ dotnet test
 ### Starten (Debug)
 
 ```powershell
-dotnet run --project src/BcContainerLauncher.App
+dotnet run --project src/BcContainerCreator.App
 ```
 
 Die App startet als Administrator (UAC-Prompt) — sonst kann sie weder Docker steuern noch PSGallery-Module installieren.
@@ -39,13 +39,13 @@ Die App startet als Administrator (UAC-Prompt) — sonst kann sie weder Docker s
 ### Single-File-Publish
 
 ```powershell
-dotnet publish src/BcContainerLauncher.App `
+dotnet publish src/BcContainerCreator.App `
   -c Release -r win-x64 `
   -p:PublishSingleFile=true `
   --self-contained false
 ```
 
-Output: `src/BcContainerLauncher.App/bin/Release/net10.0-windows/win-x64/publish/BcContainerLauncher.exe`
+Output: `src/BcContainerCreator.App/bin/Release/net10.0-windows/win-x64/publish/BcContainerCreator.exe`
 
 `--self-contained false` setzt voraus, dass auf dem Zielrechner die .NET-10-Runtime installiert ist. Für eine Distribution ohne Runtime-Voraussetzung: `--self-contained true` (Output ist dann ~70 MB).
 
@@ -89,14 +89,14 @@ Deinstallieren via Apps & Features wie gewohnt.
 
 ```
 src/
-  BcContainerLauncher.Core/    Class Library (UI-frei, theoretisch CLI-fähig)
+  BcContainerCreator.Core/    Class Library (UI-frei, theoretisch CLI-fähig)
     PowerShell/                IPowerShellRunner mit persistentem Runspace
     Docker/                    IDockerService (CLI-Wrapper)
     Setup/                     IPreflightCheck + ISetupService
     Containers/                IContainerService (New-BcContainer-Wrapper)
     Models/                    Records: ContainerCreateRequest, CheckResult, …
 
-  BcContainerLauncher.App/     WPF-Anwendung (.exe)
+  BcContainerCreator.App/     WPF-Anwendung (.exe)
     ViewModels/                MVVM mit CommunityToolkit.Mvvm
     Views/                     UserControls pro Tab
     Services/                  DialogService, DispatcherProgress, PasswordBoxAssistant
@@ -104,7 +104,7 @@ src/
     Converters/                XAML-Value-Converter
 
 tests/
-  BcContainerLauncher.Core.Tests/
+  BcContainerCreator.Core.Tests/
 ```
 
 **Designprinzipien:**
@@ -147,4 +147,4 @@ Siehe [docs/ROADMAP.md](docs/ROADMAP.md) für die geplante Roadmap.
 
 ## Logs
 
-Logfiles unter `%ProgramData%\BcContainerLauncher\Logs\` — tagesrotierend, 14 Tage Retention.
+Logfiles unter `%ProgramData%\BcContainerCreator\Logs\` — tagesrotierend, 14 Tage Retention.

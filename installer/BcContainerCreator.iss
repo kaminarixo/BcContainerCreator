@@ -7,7 +7,7 @@
 #define MyAppVersion     "1.0.0"
 #define MyAppPublisher   "HKR IT Solutions"
 #define MyAppURL         "https://github.com/kaminarixo/BcContainerCreator"
-#define MyAppExeName     "BcContainerLauncher.exe"
+#define MyAppExeName     "BcContainerCreator.exe"
 #define MyAppDirName     "BcContainerCreator"
 
 ; Erwarteter Publish-Output-Ordner — relativ zur .iss-Datei.
@@ -55,7 +55,7 @@ Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubd
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
-Name: "{group}\Logs öffnen"; Filename: "{cmd}"; Parameters: "/c explorer ""%ProgramData%\BcContainerLauncher\Logs"""; IconFilename: "{app}\{#MyAppExeName}"
+Name: "{group}\Logs öffnen"; Filename: "{cmd}"; Parameters: "/c explorer ""%ProgramData%\BcContainerCreator\Logs"""; IconFilename: "{app}\{#MyAppExeName}"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{commondesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 

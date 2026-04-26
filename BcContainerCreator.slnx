@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/BcContainerCreator.App/BcContainerCreator.App.csproj" />
+    <Project Path="src/BcContainerCreator.Core/BcContainerCreator.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/BcContainerCreator.Core.Tests/BcContainerCreator.Core.Tests.csproj" />
+  </Folder>
+</Solution>

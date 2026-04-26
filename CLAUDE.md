@@ -18,9 +18,9 @@ Windows-Desktop-App (.NET 10 / WPF), die NAV/BC-Entwicklern eine GUI für die Er
 ## Projektstruktur
 
 ```
-src/BcContainerLauncher.Core/   Class Library (UI-frei)
-src/BcContainerLauncher.App/    WPF .exe (requireAdministrator)
-tests/BcContainerLauncher.Core.Tests/
+src/BcContainerCreator.Core/   Class Library (UI-frei)
+src/BcContainerCreator.App/    WPF .exe (requireAdministrator)
+tests/BcContainerCreator.Core.Tests/
 docs/ROADMAP.md
 ```
 
@@ -55,19 +55,19 @@ docs/ROADMAP.md
 
 ## Wichtige Dateien
 
-- `src/BcContainerLauncher.Core/Containers/ContainerService.cs` — baut den `New-BcContainer`-Aufruf.
-- `src/BcContainerLauncher.Core/Setup/PreflightCheck.cs` — 10 Checks (Admin, PSVersion, ExecutionPolicy, NuGet, PSGallery, Docker × 3, BcContainerHelper, Legacy-Modul).
-- `src/BcContainerLauncher.Core/Setup/SetupService.cs` — Fix-Aktionen pro Check.
-- `src/BcContainerLauncher.Core/PowerShell/PowerShellRunner.cs` — persistenter Runspace, Stream-Subscriptions, Cancellation via `BeginStop`.
-- `src/BcContainerLauncher.App/App.xaml.cs` — DI-Setup, Serilog-Konfiguration, MainWindow-Bootstrap.
+- `src/BcContainerCreator.Core/Containers/ContainerService.cs` — baut den `New-BcContainer`-Aufruf.
+- `src/BcContainerCreator.Core/Setup/PreflightCheck.cs` — 10 Checks (Admin, PSVersion, ExecutionPolicy, NuGet, PSGallery, Docker × 3, BcContainerHelper, Legacy-Modul).
+- `src/BcContainerCreator.Core/Setup/SetupService.cs` — Fix-Aktionen pro Check.
+- `src/BcContainerCreator.Core/PowerShell/PowerShellRunner.cs` — persistenter Runspace, Stream-Subscriptions, Cancellation via `BeginStop`.
+- `src/BcContainerCreator.App/App.xaml.cs` — DI-Setup, Serilog-Konfiguration, MainWindow-Bootstrap.
 
 ## Build & Test
 
 ```powershell
 dotnet build
 dotnet test
-dotnet run --project src/BcContainerLauncher.App   # als Admin starten
-dotnet publish src/BcContainerLauncher.App -c Release -r win-x64 -p:PublishSingleFile=true --self-contained false
+dotnet run --project src/BcContainerCreator.App   # als Admin starten
+dotnet publish src/BcContainerCreator.App -c Release -r win-x64 -p:PublishSingleFile=true --self-contained false
 ```
 
 ## Out of Scope für Phase 1 (siehe ROADMAP)

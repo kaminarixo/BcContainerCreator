@@ -3,7 +3,7 @@
     Baut das Single-File-Publish + den Inno-Setup-Installer.
 
 .DESCRIPTION
-    1. dotnet publish src/BcContainerLauncher.App  →  dist/publish/
+    1. dotnet publish src/BcContainerCreator.App  →  dist/publish/
     2. ISCC.exe installer/BcContainerCreator.iss  →  dist/BcContainerCreator-Setup-<version>.exe
 
 .PARAMETER Version
@@ -18,7 +18,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot     = Split-Path -Parent $PSScriptRoot
-$appProject   = Join-Path $repoRoot 'src\BcContainerLauncher.App'
+$appProject   = Join-Path $repoRoot 'src\BcContainerCreator.App'
 $publishDir   = Join-Path $repoRoot 'dist\publish'
 $issScript    = Join-Path $repoRoot 'installer\BcContainerCreator.iss'
 $distDir      = Join-Path $repoRoot 'dist'
