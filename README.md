@@ -161,4 +161,4 @@ Siehe [docs/ROADMAP.md](docs/ROADMAP.md) für die geplanten Phasen (Container-Ve
 
 ## Lizenz
 
-[MIT](LICENSE) — Copyright © 2026 HKR IT Solutions
+[MIT](LICENSE) — Copyright © 2026 Thomas Scharf
