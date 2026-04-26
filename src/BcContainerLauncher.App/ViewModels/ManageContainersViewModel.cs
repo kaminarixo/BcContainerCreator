@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Windows;
+using System.Windows.Threading;
 using BcContainerLauncher.App.Services;
+using BcContainerLauncher.App.Views;
 using BcContainerLauncher.Core.Containers;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -17,7 +19,9 @@ public sealed partial class ManageContainersViewModel : ObservableObject
 {
     private readonly IContainerService _containerService;
     private readonly IDialogService _dialogService;
+    private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<ManageContainersViewModel> _logger;
+    private readonly DispatcherTimer _autoRefreshTimer;
 
     public ObservableCollection<ContainerInfoViewModel> Containers { get; } = new();
 
@@ -27,14 +31,52 @@ public sealed partial class ManageContainersViewModel : ObservableObject
     [ObservableProperty]
     private string _statusText = "Bereit. Klick 'Aktualisieren' um Container zu laden.";
 
+    [ObservableProperty]
+    private bool _autoRefreshEnabled = true;
+
     public ManageContainersViewModel(
         IContainerService containerService,
         IDialogService dialogService,
-        ILogger<ManageContainersViewModel> logger)
+        ILoggerFactory loggerFactory)
     {
         _containerService = containerService;
         _dialogService = dialogService;
-        _logger = logger;
+        _loggerFactory = loggerFactory;
+        _logger = loggerFactory.CreateLogger<ManageContainersViewModel>();
+
+        // Alle 10 s neu laden — der Tick wird übersprungen, wenn gerade
+        // schon eine Aktion läuft, damit der User nicht in eine Liste klickt,
+        // die sich gerade unter ihm wegmodifiziert.
+        _autoRefreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+        _autoRefreshTimer.Tick += OnAutoRefreshTick;
+        _autoRefreshTimer.Start();
+    }
+
+    private async void OnAutoRefreshTick(object? sender, EventArgs e)
+    {
+        if (!AutoRefreshEnabled) return;
+        if (IsLoading) return;
+        if (Containers.Any(c => c.IsBusy)) return;
+        try
+        {
+            await RefreshAsync();
+        }
+        catch
+        {
+            // Tick-Fehler dürfen die Timer-Kette nicht killen.
+        }
+    }
+
+    partial void OnAutoRefreshEnabledChanged(bool value)
+    {
+        if (value && !_autoRefreshTimer.IsEnabled)
+        {
+            _autoRefreshTimer.Start();
+        }
+        else if (!value && _autoRefreshTimer.IsEnabled)
+        {
+            _autoRefreshTimer.Stop();
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanRefresh))]
@@ -115,6 +157,29 @@ public sealed partial class ManageContainersViewModel : ObservableObject
         {
             _logger.LogWarning(ex, "URL öffnen fehlgeschlagen");
             _dialogService.ShowMessage($"URL konnte nicht geöffnet werden: {ex.Message}", "Fehler", isError: true);
+        }
+    }
+
+    [RelayCommand]
+    private void ShowLogs(ContainerInfoViewModel? vm)
+    {
+        if (vm is null) return;
+        try
+        {
+            var logsVm = new ContainerLogsViewModel(
+                vm.Name,
+                _containerService,
+                _loggerFactory.CreateLogger<ContainerLogsViewModel>());
+            var window = new ContainerLogsWindow(logsVm)
+            {
+                Owner = Application.Current?.MainWindow
+            };
+            window.Show();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Logs-Window konnte nicht geöffnet werden");
+            _dialogService.ShowMessage(ex.Message, "Fehler", isError: true);
         }
     }
 

@@ -21,6 +21,7 @@ public sealed class PreflightCheck : IPreflightCheck
     private static readonly string[] CheckIds =
     [
         "admin",
+        "windows-edition",
         "ps-version",
         "execution-policy",
         "nuget-provider",
@@ -56,6 +57,7 @@ public sealed class PreflightCheck : IPreflightCheck
         }
 
         await Run(CheckAdminAsync).ConfigureAwait(false);
+        await Run(CheckWindowsEditionAsync).ConfigureAwait(false);
         await Run(CheckPSVersionAsync).ConfigureAwait(false);
         await Run(CheckExecutionPolicyAsync).ConfigureAwait(false);
         await Run(CheckNuGetProviderAsync).ConfigureAwait(false);
@@ -81,6 +83,57 @@ public sealed class PreflightCheck : IPreflightCheck
             Message: isAdmin
                 ? "Prozess läuft mit Admin-Rechten."
                 : "Standard-User. Admin-pflichtige Aktionen fragen via UAC nach (lokaler Admin, z. B. .\\admin)."));
+    }
+
+    private async Task<CheckResult> CheckWindowsEditionAsync(CancellationToken ct)
+    {
+        // EditionID kommt aus der Registry und ist deterministischer als
+        // Get-CimInstance Win32_OperatingSystem.Caption (lokalisiert).
+        const string script = """
+            $key = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+            $edition  = (Get-ItemProperty -Path $key -ErrorAction SilentlyContinue).EditionID
+            $product  = (Get-ItemProperty -Path $key -ErrorAction SilentlyContinue).ProductName
+            "$edition|$product"
+            """;
+        var result = await _runner.ExecuteAsync(script, cancellationToken: ct).ConfigureAwait(false);
+        var raw = result.Objects.FirstOrDefault()?.ToString() ?? string.Empty;
+        var parts = raw.Split('|', 2);
+        var edition = parts.Length > 0 ? parts[0] : string.Empty;
+        var product = parts.Length > 1 ? parts[1] : string.Empty;
+
+        // Pro / Enterprise / Education / ServerStandard etc. = Hyper-V verfügbar
+        // → echte Windows-Container möglich.
+        // Core / Home* = nur WSL2-Backend → Linux-Container, BC läuft NICHT.
+        var supportsWindowsContainers = edition.Contains("Pro", StringComparison.OrdinalIgnoreCase)
+            || edition.Contains("Enterprise", StringComparison.OrdinalIgnoreCase)
+            || edition.Contains("Education", StringComparison.OrdinalIgnoreCase)
+            || edition.Contains("Server", StringComparison.OrdinalIgnoreCase)
+            || edition.Contains("Workstation", StringComparison.OrdinalIgnoreCase);
+        var isHome = edition.Contains("Core", StringComparison.OrdinalIgnoreCase)
+            || edition.Contains("Home", StringComparison.OrdinalIgnoreCase);
+
+        if (string.IsNullOrEmpty(edition))
+        {
+            return new CheckResult(
+                Name: "Windows-Edition",
+                Status: CheckStatus.Warning,
+                Message: "Edition konnte nicht ausgelesen werden.");
+        }
+
+        if (isHome || !supportsWindowsContainers)
+        {
+            return new CheckResult(
+                Name: "Windows-Edition",
+                Status: CheckStatus.Failed,
+                Message: $"{product} ({edition}). Windows-Container brauchen Pro/Enterprise/Education — Home unterstützt nur Linux-Container, BC läuft damit nicht.",
+                IsFixable: false,
+                HelpUrl: "https://docs.docker.com/desktop/install/windows-install/#system-requirements");
+        }
+
+        return new CheckResult(
+            Name: "Windows-Edition",
+            Status: CheckStatus.Ok,
+            Message: $"{product} ({edition}) — Windows-Container unterstützt.");
     }
 
     private async Task<CheckResult> CheckPSVersionAsync(CancellationToken ct)

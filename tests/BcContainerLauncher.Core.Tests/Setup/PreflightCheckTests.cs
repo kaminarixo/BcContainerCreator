@@ -32,7 +32,7 @@ public class PreflightCheckTests
         results.Should().HaveCount(sut.GetCheckIds().Count);
         results.Select(r => r.Name).Should().Contain(new[]
         {
-            "Ausführungs-Kontext", "PowerShell-Version", "ExecutionPolicy (CurrentUser)",
+            "Ausführungs-Kontext", "Windows-Edition", "PowerShell-Version", "ExecutionPolicy (CurrentUser)",
             "NuGet-PackageProvider", "PSGallery vertrauenswürdig",
             "Docker installiert", "Docker-Daemon läuft", "Docker im Windows-Modus",
             "BcContainerHelper-Modul", "Kein Legacy-Modul"

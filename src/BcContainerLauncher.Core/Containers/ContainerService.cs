@@ -279,6 +279,17 @@ public sealed class ContainerService : IContainerService
         return WasZeroExit(result);
     }
 
+    public async Task<string> GetContainerLogsAsync(string name, int tail = 1000, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        if (tail <= 0) tail = 1000;
+        var quoted = QuoteForDocker(name);
+        // 2>&1 mergt stderr in stdout, Out-String konsolidiert zu einem PSObject.
+        var script = $"docker logs --tail {tail} {quoted} 2>&1 | Out-String";
+        var result = await _runner.ExecuteAsync(script, cancellationToken: cancellationToken).ConfigureAwait(false);
+        return result.Objects.FirstOrDefault()?.ToString() ?? string.Empty;
+    }
+
     private static bool WasZeroExit(PSResult result)
     {
         if (!result.Success) return false;

@@ -13,15 +13,26 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12">
-            <Button Content="Aktualisieren"
-                    Style="{StaticResource PrimaryButton}"
-                    Margin="0,0,12,0"
-                    Command="{Binding RefreshCommand}" />
-            <TextBlock Text="{Binding StatusText}"
-                       VerticalAlignment="Center"
-                       Foreground="{StaticResource TextMuted}" />
-        </StackPanel>
+        <Grid Grid.Row="0" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Orientation="Horizontal">
+                <Button Content="Aktualisieren"
+                        Style="{StaticResource PrimaryButton}"
+                        Margin="0,0,12,0"
+                        Command="{Binding RefreshCommand}" />
+                <TextBlock Text="{Binding StatusText}"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource TextMuted}" />
+            </StackPanel>
+            <CheckBox Grid.Column="2"
+                      Content="Auto-Refresh (10s)"
+                      VerticalAlignment="Center"
+                      IsChecked="{Binding AutoRefreshEnabled}" />
+        </Grid>
 
         <Border Grid.Row="1"
                 Background="{StaticResource Surface}"
@@ -56,7 +67,7 @@
                             <GridViewColumn Header="Name" Width="220" DisplayMemberBinding="{Binding Name}" />
                             <GridViewColumn Header="Image" Width="320" DisplayMemberBinding="{Binding Image}" />
                             <GridViewColumn Header="Status" Width="220" DisplayMemberBinding="{Binding Status}" />
-                            <GridViewColumn Header="" Width="380">
+                            <GridViewColumn Header="" Width="470">
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
@@ -69,6 +80,12 @@
                                                     Command="{Binding DataContext.OpenUrlCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                     CommandParameter="{Binding}"
                                                     ToolTip="{Binding WebClientUrl}" />
+                                            <Button Content="Logs"
+                                                    Padding="12,4"
+                                                    Margin="0,0,6,0"
+                                                    MinWidth="70"
+                                                    Command="{Binding DataContext.ShowLogsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}" />
                                             <Button Content="Start"
                                                     Padding="12,4"
                                                     Margin="0,0,6,0"

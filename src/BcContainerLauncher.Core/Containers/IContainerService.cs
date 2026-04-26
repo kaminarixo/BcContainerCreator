@@ -45,4 +45,7 @@ public interface IContainerService
 
     /// <summary>Entfernt einen Container per Name. <paramref name="force"/> stoppt vorher.</summary>
     Task<bool> RemoveContainerAsync(string name, bool force = true, CancellationToken cancellationToken = default);
+
+    /// <summary>Holt die letzten <paramref name="tail"/> Log-Zeilen eines Containers (stdout+stderr).</summary>
+    Task<string> GetContainerLogsAsync(string name, int tail = 1000, CancellationToken cancellationToken = default);
 }
