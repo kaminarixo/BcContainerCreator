@@ -190,12 +190,10 @@ public sealed class PowerShellRunner : IPowerShellRunner
             {
                 candidates.Add(Path.GetDirectoryName(Environment.ProcessPath)!);
             }
+            // AppContext.BaseDirectory ist single-file-safe (Assembly.Location
+            // ist es nicht — IL3000). Bei dotnet-host-Start zeigt es aufs
+            // DLL-Verzeichnis, bei direkt gestarteter .exe auf den Extract-Pfad.
             candidates.Add(AppContext.BaseDirectory);
-            var asmLoc = typeof(PowerShellRunner).Assembly.Location;
-            if (!string.IsNullOrEmpty(asmLoc))
-            {
-                candidates.Add(Path.GetDirectoryName(asmLoc)!);
-            }
 
             string? sdkModules = null;
             string? checkedRoot = null;

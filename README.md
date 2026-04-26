@@ -49,6 +49,40 @@ Output: `src/BcContainerLauncher.App/bin/Release/net10.0-windows/win-x64/publish
 
 `--self-contained false` setzt voraus, dass auf dem Zielrechner die .NET-10-Runtime installiert ist. Für eine Distribution ohne Runtime-Voraussetzung: `--self-contained true` (Output ist dann ~70 MB).
 
+### Bundle-Installer (Setup.exe)
+
+Der Installer wird mit **Inno Setup 6** gebaut und prüft beim Start, ob die .NET-10-Desktop-Runtime installiert ist (mit Link zur Download-Seite, falls nicht).
+
+**Voraussetzung — Inno Setup einmalig installieren:**
+
+```powershell
+winget install --exact --id JRSoftware.InnoSetup --silent
+```
+
+**Installer bauen:**
+
+```powershell
+pwsh build/build-installer.ps1
+# optional: -Version 1.2.3
+```
+
+Das Skript räumt `dist/publish/` auf, ruft `dotnet publish`, kompiliert das Inno-Setup-Skript (`installer/BcContainerCreator.iss`) und legt das Ergebnis hier ab:
+
+```
+dist/BcContainerCreator-Setup-<version>.exe
+```
+
+Diese eine Datei kannst du an Kollegen weitergeben. Beim Doppelklick:
+
+1. UAC-Prompt (Setup verlangt Admin)
+2. .NET-10-Desktop-Runtime-Check — falls fehlt, Hinweis + Download-Link
+3. Pfad-Auswahl (default `%ProgramFiles%\BcContainerCreator`)
+4. Optional: Desktop-Icon
+5. Start-Menü-Eintrag inkl. "Logs öffnen"-Shortcut
+6. Optional: App direkt starten
+
+Deinstallieren via Apps & Features wie gewohnt.
+
 ---
 
 ## Architektur
