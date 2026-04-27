@@ -19,10 +19,17 @@ namespace BcContainerCreator.Core.PowerShell;
 /// die SDK-Embed-Engine an einigen .NET-Reflection-Stellen anders tickt
 /// als eine echte powershell.exe.
 /// <para>
-/// stdout / stderr werden zeilenweise asynchron gelesen, in <see cref="ILogger"/>
-/// und über <see cref="OutputReceived"/> an die UI gestreamt. Variablen werden
-/// als ACL-geschützte JSON-Datei (User-Temp) übergeben — nie via Prozessargument
-/// und nie als Plain-Text in Logs.
+/// Aufrufe werden über einen <see cref="SemaphoreSlim"/> serialisiert —
+/// <see cref="OutputReceived"/> ist ein globales Event am Singleton, und
+/// parallele Runs würden sonst stdout-Zeilen aus unterschiedlichen Skripten
+/// ineinander mischen (Container-Erstellung vs. Diagnose vs. List).
+/// </para>
+/// <para>
+/// Variablen werden als ACL-geschützte JSON-Datei (User-Temp) übergeben —
+/// nie via Prozessargument und nie als Plain-Text in Logs. Wenn die
+/// ACL-Restriktion fehlschlägt UND mindestens ein <see cref="SecureString"/>
+/// im Variables-Dictionary war, bricht <see cref="ExecuteAsync"/> ab statt
+/// das Klartext-Passwort in einer breiter lesbaren Datei zu hinterlassen.
 /// </para>
 /// </summary>
 public sealed class PowerShellRunner : IPowerShellRunner
@@ -30,6 +37,7 @@ public sealed class PowerShellRunner : IPowerShellRunner
     private const string PowerShellExe = @"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe";
 
     private readonly ILogger<PowerShellRunner> _logger;
+    private readonly SemaphoreSlim _gate = new(1, 1);
 
     public event EventHandler<PowerShellOutputEventArgs>? OutputReceived;
 
@@ -47,6 +55,10 @@ public sealed class PowerShellRunner : IPowerShellRunner
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(script);
 
+        // Serialisierung: nur ein externes Skript gleichzeitig, damit
+        // OutputReceived-Zeilen sich nicht zwischen Aufrufern vermischen.
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+
         var stopwatch = Stopwatch.StartNew();
         var stdoutLines = new List<string>();
         var stderrLines = new List<string>();
@@ -59,8 +71,20 @@ public sealed class PowerShellRunner : IPowerShellRunner
         {
             if (variables is { Count: > 0 })
             {
-                paramFilePath = WriteParamFile(variables);
+                paramFilePath = WriteParamFile(variables, out var containsSecret);
+                var aclOk = TryRestrictAclToCurrentUser(paramFilePath);
+                if (!aclOk && containsSecret)
+                {
+                    // Hard-Abort: Klartext-Passwort darf nicht in einer Datei
+                    // mit unsicherer ACL liegen — sofort löschen und melden.
+                    TryDelete(paramFilePath);
+                    paramFilePath = null;
+                    throw new InvalidOperationException(
+                        "Konnte Param-Datei nicht auf den aktuellen User beschränken — Abbruch, " +
+                        "weil das Variables-Dictionary mindestens ein SecureString-Secret enthält.");
+                }
             }
+
             scriptFilePath = WriteScriptFile(script);
 
             using var process = new Process();
@@ -167,6 +191,7 @@ public sealed class PowerShellRunner : IPowerShellRunner
             {
                 TryDelete(scriptFilePath);
             }
+            _gate.Release();
         }
     }
 
@@ -181,6 +206,20 @@ public sealed class PowerShellRunner : IPowerShellRunner
             $VerbosePreference = 'Continue'
             $ProgressPreference = 'SilentlyContinue'
             try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}
+
+            # User-Modulpfade absichern. PSResourceGet / PS7 legen Module unter
+            # Documents\PowerShell\Modules ab; Windows PowerShell 5.1 sucht dort
+            # standardmäßig NICHT — also explizit voranstellen.
+            $userModulePaths = @(
+                (Join-Path $env:USERPROFILE 'Documents\WindowsPowerShell\Modules'),
+                (Join-Path $env:USERPROFILE 'Documents\PowerShell\Modules')
+            )
+            $existing = $env:PSModulePath -split [IO.Path]::PathSeparator
+            foreach ($p in $userModulePaths) {
+                if ((Test-Path -LiteralPath $p) -and ($existing -notcontains $p)) {
+                    $env:PSModulePath = $p + [IO.Path]::PathSeparator + $env:PSModulePath
+                }
+            }
 
             $Params = $null
             if ($env:BCC_PARAM_FILE -and (Test-Path -LiteralPath $env:BCC_PARAM_FILE)) {
@@ -197,22 +236,27 @@ public sealed class PowerShellRunner : IPowerShellRunner
         var suffix = """
             } catch {
                 $err = $_
-                Write-Host '--- FEHLER ---'
-                Write-Host ("  Type:    {0}" -f $err.Exception.GetType().FullName)
-                Write-Host ("  Message: {0}" -f $err.Exception.Message)
+                $errorLines = New-Object System.Collections.Generic.List[string]
+                $errorLines.Add('--- FEHLER ---')
+                $errorLines.Add(("  Type:    {0}" -f $err.Exception.GetType().FullName))
+                $errorLines.Add(("  Message: {0}" -f $err.Exception.Message))
                 $inner = $err.Exception.InnerException
                 while ($inner) {
-                    Write-Host ("  Inner:   {0}: {1}" -f $inner.GetType().FullName, $inner.Message)
+                    $errorLines.Add(("  Inner:   {0}: {1}" -f $inner.GetType().FullName, $inner.Message))
                     $inner = $inner.InnerException
                 }
                 if ($err.ScriptStackTrace) {
-                    Write-Host ("  Stack:   {0}" -f $err.ScriptStackTrace)
+                    $errorLines.Add(("  Stack:   {0}" -f $err.ScriptStackTrace))
                 }
                 if ($err.InvocationInfo -and $err.InvocationInfo.PositionMessage) {
-                    Write-Host ("  Pos:     {0}" -f $err.InvocationInfo.PositionMessage)
+                    $errorLines.Add(("  Pos:     {0}" -f $err.InvocationInfo.PositionMessage))
                 }
-                # Auch in stderr — landet so in PSResult.Errors.
-                [Console]::Error.WriteLine($err.Exception.Message)
+                # Jede Zeile sowohl auf stdout (Live-Log + UI) als auch auf stderr
+                # (PSResult.Errors) — sonst kennt der Aufrufer nur die nackte Message.
+                foreach ($line in $errorLines) {
+                    Write-Host $line
+                    [Console]::Error.WriteLine($line)
+                }
                 exit 1
             }
             exit 0
@@ -223,10 +267,11 @@ public sealed class PowerShellRunner : IPowerShellRunner
         return path;
     }
 
-    private string WriteParamFile(IDictionary<string, object?> variables)
+    private string WriteParamFile(IDictionary<string, object?> variables, out bool containsSecret)
     {
         var path = Path.Combine(Path.GetTempPath(), $"bcc-params-{Guid.NewGuid():N}.json");
 
+        containsSecret = false;
         var serializable = new Dictionary<string, object?>(StringComparer.Ordinal);
         var sensitiveKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var kvp in variables)
@@ -235,6 +280,7 @@ public sealed class PowerShellRunner : IPowerShellRunner
             {
                 serializable[kvp.Key] = SecureStringToPlain(ss);
                 sensitiveKeys.Add(kvp.Key);
+                containsSecret = true;
             }
             else
             {
@@ -244,8 +290,6 @@ public sealed class PowerShellRunner : IPowerShellRunner
 
         var json = JsonSerializer.Serialize(serializable);
         File.WriteAllText(path, json, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-
-        TryRestrictAclToCurrentUser(path);
 
         if (_logger.IsEnabled(LogLevel.Debug))
         {
@@ -257,7 +301,12 @@ public sealed class PowerShellRunner : IPowerShellRunner
         return path;
     }
 
-    private void TryRestrictAclToCurrentUser(string path)
+    /// <summary>
+    /// Liefert <c>true</c>, wenn die ACL erfolgreich auf den aktuellen User
+    /// beschränkt wurde. Bei <c>false</c> sollte der Aufrufer entscheiden, ob
+    /// er weitermacht (kein Secret) oder hard-abbricht (Secret im Spiel).
+    /// </summary>
+    private bool TryRestrictAclToCurrentUser(string path)
     {
         try
         {
@@ -272,20 +321,23 @@ public sealed class PowerShellRunner : IPowerShellRunner
             }
 
             using var identity = WindowsIdentity.GetCurrent();
-            if (identity.User is not null)
+            if (identity.User is null)
             {
-                acl.AddAccessRule(new FileSystemAccessRule(
-                    identity.User,
-                    FileSystemRights.FullControl,
-                    AccessControlType.Allow));
+                return false;
             }
 
+            acl.AddAccessRule(new FileSystemAccessRule(
+                identity.User,
+                FileSystemRights.FullControl,
+                AccessControlType.Allow));
+
             fi.SetAccessControl(acl);
+            return true;
         }
         catch (Exception ex)
         {
-            // User-Temp ist per default User-only, daher nicht fatal.
-            _logger.LogWarning(ex, "ACL-Restriktion auf Param-File fehlgeschlagen — fällt auf NTFS-Default zurück");
+            _logger.LogWarning(ex, "ACL-Restriktion auf Param-File fehlgeschlagen");
+            return false;
         }
     }
 
@@ -337,5 +389,9 @@ public sealed class PowerShellRunner : IPowerShellRunner
         }
     }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public ValueTask DisposeAsync()
+    {
+        _gate.Dispose();
+        return ValueTask.CompletedTask;
+    }
 }

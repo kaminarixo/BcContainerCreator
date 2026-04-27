@@ -139,10 +139,6 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
     [ObservableProperty]
     private string _createProgressText = "Bereit";
 
-    /// <summary>True während IsRunning, drives die ProgressBar-Sichtbarkeit.</summary>
-    [ObservableProperty]
-    private bool _isCreateProgressVisible;
-
     /// <summary>True solange noch keine Stage erkannt wurde — Marquee-Animation statt fester Wert.</summary>
     [ObservableProperty]
     private bool _isCreateProgressIndeterminate = true;
@@ -239,9 +235,9 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
         Output = string.Empty;
 
         // Fortschritt initialisieren — Marquee bis erste Stage erkannt wird.
+        // Sichtbarkeit ist an IsRunning gekoppelt (Overlay-Visibility in der View).
         CreateProgressPercent = 0;
         CreateProgressText = "Vorbereitung …";
-        IsCreateProgressVisible = true;
         IsCreateProgressIndeterminate = true;
 
         try
@@ -304,8 +300,9 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
         finally
         {
             IsRunning = false;
-            // Sichtbar lassen, falls fertig auf 100% — User soll Endstand sehen.
-            // Beim nächsten Run wird IsCreateProgressVisible neu auf true gesetzt.
+            // Overlay verschwindet automatisch (an IsRunning gebunden). Der finale
+            // Status (Fertig / Fehlgeschlagen / Abgebrochen) wurde vorher gesetzt
+            // und ist im Erfolgs-/Fehler-Dialog sichtbar.
         }
     }
 
@@ -346,6 +343,9 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
 
     partial void OnIsRunningChanged(bool value)
     {
+        // Beide Commands hängen von IsRunning ab — sonst bleibt der Erstellen-
+        // Button am Run-Ende disabled und Abbrechen am Run-Start enabled.
+        CreateCommand.NotifyCanExecuteChanged();
         CancelCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(IsCreateFormEnabled));
     }

@@ -188,12 +188,14 @@ public sealed class PreflightCheck : IPreflightCheck
 
     private async Task<CheckResult> CheckPSVersionAsync(CancellationToken ct)
     {
-        var r = await _runner.ExecuteAsync("$PSVersionTable.PSVersion.ToString()", cancellationToken: ct).ConfigureAwait(false);
+        var r = await _runner.ExecuteAsync(
+            "Write-Output $PSVersionTable.PSVersion.ToString()",
+            cancellationToken: ct).ConfigureAwait(false);
         var version = r.Objects.FirstOrDefault()?.ToString() ?? "unbekannt";
         return new CheckResult(
             Name: "PowerShell-Version",
             Status: r.Success ? CheckStatus.Ok : CheckStatus.Warning,
-            Message: $"In-Process PowerShell: {version}",
+            Message: $"Windows PowerShell (extern): {version}",
             IsFixable: false);
     }
 
