@@ -26,11 +26,38 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
     [ObservableProperty]
     private string _statusText = "Bereit.";
 
+    /// <summary>
+    /// Zusammenfassung "OK / Total" für Sidebar-Badge und Header-Card.
+    /// Wird neu berechnet, wenn sich die Liste ändert.
+    /// </summary>
+    public string OkCountSummary => $"{Checks.Count(c => c.Status == Core.Models.CheckStatus.Ok)}/{Checks.Count}";
+
+    /// <summary>
+    /// Verhältnis bestandener Checks 0..1 für die Header-Progress-Anzeige.
+    /// </summary>
+    public double OkRatio => Checks.Count == 0 ? 0d : Checks.Count(c => c.Status == Core.Models.CheckStatus.Ok) / (double)Checks.Count;
+
+    public int OkCount => Checks.Count(c => c.Status == Core.Models.CheckStatus.Ok);
+    public int WarnCount => Checks.Count(c => c.Status == Core.Models.CheckStatus.Warning);
+    public int FailCount => Checks.Count(c => c.Status == Core.Models.CheckStatus.Failed);
+
     public DiagnosticsViewModel(IPreflightCheck preflight, ISetupService setup, ILogger<DiagnosticsViewModel> logger)
     {
         _preflight = preflight;
         _setup = setup;
         _logger = logger;
+
+        // Computed-Property-Updates triggern, wenn sich die Check-Liste ändert.
+        Checks.CollectionChanged += (_, _) => NotifyComputedChanged();
+    }
+
+    private void NotifyComputedChanged()
+    {
+        OnPropertyChanged(nameof(OkCountSummary));
+        OnPropertyChanged(nameof(OkRatio));
+        OnPropertyChanged(nameof(OkCount));
+        OnPropertyChanged(nameof(WarnCount));
+        OnPropertyChanged(nameof(FailCount));
     }
 
     [RelayCommand(CanExecute = nameof(CanRun))]

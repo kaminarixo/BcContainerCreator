@@ -26,6 +26,12 @@ public sealed partial class ManageContainersViewModel : ObservableObject
 
     public ObservableCollection<ContainerInfoViewModel> Containers { get; } = new();
 
+    /// <summary>Anzahl laufender Container — für die Summary-Tile "Laufend".</summary>
+    public int RunningCount => Containers.Count(c => c.IsRunning);
+
+    /// <summary>Anzahl gestoppter Container — für die Summary-Tile "Gestoppt".</summary>
+    public int StoppedCount => Containers.Count(c => !c.IsRunning);
+
     [ObservableProperty]
     private bool _isLoading;
 
@@ -53,6 +59,12 @@ public sealed partial class ManageContainersViewModel : ObservableObject
         _autoRefreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
         _autoRefreshTimer.Tick += OnAutoRefreshTick;
         _autoRefreshTimer.Start();
+
+        Containers.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(RunningCount));
+            OnPropertyChanged(nameof(StoppedCount));
+        };
     }
 
     private async void OnAutoRefreshTick(object? sender, EventArgs e)

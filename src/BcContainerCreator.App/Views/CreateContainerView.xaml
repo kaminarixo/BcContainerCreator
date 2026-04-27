@@ -3,242 +3,514 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:BcContainerCreator.App.ViewModels"
              xmlns:svc="clr-namespace:BcContainerCreator.App.Services"
+             xmlns:models="clr-namespace:BcContainerCreator.Core.Models;assembly=BcContainerCreator.Core"
              d:DataContext="{d:DesignInstance Type=vm:CreateContainerViewModel}"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d">
-    <Grid Margin="12">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="380" />
-            <ColumnDefinition Width="12" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
 
-        <!-- Eingabeformular: wird gesperrt während Erstellung läuft -->
-        <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto"
-                      IsEnabled="{Binding IsCreateFormEnabled}">
-            <StackPanel>
-                <TextBlock Text="Container-Konfiguration" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8" />
+    <UserControl.Resources>
+        <!-- Segment-Button: ToggleButton-Look der gruppierten Auswahl (Sandbox/OnPrem etc.) -->
+        <Style x:Key="SegmentRadio" TargetType="{x:Type RadioButton}">
+            <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Padding" Value="14,5" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type RadioButton}">
+                        <Border x:Name="Bd"
+                                Background="Transparent"
+                                CornerRadius="5"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource BgElevated}" />
+                                <Setter Property="Foreground" Value="{StaticResource Text}" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource Text}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
-                <Label Content="Containername" />
-                <TextBox Text="{Binding ContainerName, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+        <Style x:Key="SegmentGroup" TargetType="{x:Type Border}">
+            <Setter Property="Background" Value="{StaticResource BgSubtle}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Border}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusMd}" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+        </Style>
+    </UserControl.Resources>
 
-                <Label Content="Artifact-Typ" Margin="0,8,0,0" />
-                <ComboBox ItemsSource="{Binding ArtifactTypes}"
-                          SelectedItem="{Binding SelectedArtifactType}" />
+    <!-- Outer Grid füllt UserControl-Höhe (kein outer ScrollViewer — sonst wächst
+         die Console im rechten Card unbegrenzt mit dem Output statt zu scrollen). -->
+    <Grid Margin="36,28,36,28" MaxWidth="1320" HorizontalAlignment="Stretch">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
 
-                <Label Content="Country" Margin="0,8,0,0" />
-                <ComboBox ItemsSource="{Binding Countries}"
-                          SelectedItem="{Binding SelectedCountry}"
-                          IsEditable="True" />
+            <!-- Page-Head -->
+            <Grid Grid.Row="0" Margin="0,0,0,22">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
 
-                <Grid Margin="0,8,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <Label Grid.Column="0" Content="Version (BC LTS)" />
-                    <Button Grid.Column="1"
-                            Content="Aktualisieren"
-                            Padding="8,2"
-                            FontSize="11"
-                            Command="{Binding ReloadVersionsCommand}" />
-                </Grid>
-                <ComboBox ItemsSource="{Binding AvailableVersions}"
-                          SelectedItem="{Binding SelectedVersion}"
-                          DisplayMemberPath="Display" />
-                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                    <TextBlock Text="Lade Versionen…"
-                               FontSize="11"
-                               Foreground="{StaticResource TextMuted}"
-                               Visibility="{Binding IsLoadingVersions, Converter={StaticResource BoolToVis}}" />
-                    <TextBlock FontSize="11"
-                               Foreground="{StaticResource TextMuted}"
-                               Visibility="{Binding IsLoadingVersions, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
-                        <Run Text="Aufgelöst: " />
-                        <Run Text="{Binding ResolvedBuild, FallbackValue=unbekannt, TargetNullValue=unbekannt, Mode=OneWay}"
-                             FontWeight="SemiBold" />
+                <StackPanel>
+                    <TextBlock Style="{StaticResource Crumb}">
+                        <Run Text="Werkzeuge" />
+                        <Run Text="  /  " Foreground="{StaticResource TextTertiary}" />
+                        <Run Text="Container" />
+                        <Run Text="  /  " Foreground="{StaticResource TextTertiary}" />
+                        <Run Text="Erstellen" />
+                    </TextBlock>
+                    <TextBlock Text="Neuen Container erstellen" Style="{StaticResource PageTitle}" />
+                    <TextBlock Style="{StaticResource PageSubtitle}" MaxWidth="720" HorizontalAlignment="Left">
+                        <Run Text="Versions-Auswahl, Auth, optionale Features. Live-Output rechts — der Aufruf läuft als externer" />
+                        <Run Text="powershell.exe" FontFamily="{StaticResource MonoFont}" />
+                        <Run Text="-Subprozess." />
                     </TextBlock>
                 </StackPanel>
+            </Grid>
 
-                <Label Content="Auth-Typ" Margin="0,8,0,0" />
-                <ComboBox ItemsSource="{Binding AuthTypes}"
-                          SelectedItem="{Binding SelectedAuthType}" />
+            <!-- Two-column area -->
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="18" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
 
-                <Label Content="Username" Margin="0,8,0,0" />
-                <TextBox Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" />
+                <!-- LEFT: Formular — eigener ScrollViewer, damit lange Form
+                     unabhängig vom rechten Live-Output-Card scrollt. -->
+                <ScrollViewer Grid.Column="0"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Padding="0,0,8,8">
+                    <StackPanel IsEnabled="{Binding IsCreateFormEnabled}">
 
-                <Grid Margin="0,8,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <Label Grid.Column="0" Content="Passwort" />
-                    <CheckBox Grid.Column="1"
-                              Content="Anzeigen"
-                              FontSize="11"
-                              VerticalAlignment="Center"
-                              IsChecked="{Binding ShowPassword}" />
-                </Grid>
-                <Grid>
-                    <PasswordBox svc:PasswordBoxAssistant.BindPassword="True"
-                                 svc:PasswordBoxAssistant.PlainPassword="{Binding Password, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 Visibility="{Binding ShowPassword, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
-                    <TextBox Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}"
-                             Visibility="{Binding ShowPassword, Converter={StaticResource BoolToVis}}"
-                             FontFamily="{StaticResource MonoFont}" />
-                </Grid>
+                    <!-- Card: Container -->
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,18">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
 
-                <Label Content="Lizenz-Datei (optional)" Margin="0,8,0,0" />
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBox Grid.Column="0" Text="{Binding LicenseFilePath, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="True" />
-                    <Button Grid.Column="1" Content="…" Padding="10,2" Margin="6,0,0,0"
-                            Command="{Binding PickLicenseFileCommand}" />
-                </Grid>
+                            <Border Grid.Row="0"
+                                    Padding="20,14"
+                                    BorderBrush="{StaticResource Border}"
+                                    BorderThickness="0,0,0,1">
+                                <StackPanel>
+                                    <TextBlock Text="Container" Style="{StaticResource CardTitle}" />
+                                    <TextBlock Text="Identität &amp; BC-Version" Style="{StaticResource CardSub}" Margin="0,2,0,0" />
+                                </StackPanel>
+                            </Border>
 
-                <CheckBox Content="EULA akzeptieren" Margin="0,12,0,0"
-                          IsChecked="{Binding AcceptEula}" />
-                <CheckBox Content="AL-Tooling einbinden (includeAL)" Margin="0,4,0,0"
-                          IsChecked="{Binding IncludeAL}" />
+                            <Grid Grid.Row="1" Margin="20,16,20,18">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="14" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="14" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="14" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
 
-                <!-- Erweiterte Optionen: zusammenklappbar, damit der Tab beim Erst-Use nicht überfrachtet ist -->
-                <Expander Header="Erweiterte Optionen"
-                          Margin="0,16,0,0"
-                          IsExpanded="{Binding ShowAdvanced}"
-                          FontWeight="SemiBold"
-                          Foreground="{StaticResource TextMuted}">
-                    <StackPanel Margin="0,8,0,0">
-                        <CheckBox Content="Multitenant (mehrere BC-Mandanten im Container)"
-                                  IsChecked="{Binding Multitenant}"
-                                  FontWeight="Normal" />
-                        <CheckBox Content="TestToolkit installieren"
-                                  Margin="0,6,0,0"
-                                  IsChecked="{Binding IncludeTestToolkit}"
-                                  FontWeight="Normal" />
+                                <!-- Containername + Country -->
+                                <StackPanel Grid.Row="0" Grid.Column="0">
+                                    <TextBlock FontSize="12" FontWeight="Medium" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6">
+                                        <Run Text="Container-Name" />
+                                        <Run Text="*" Foreground="{StaticResource Brand}" />
+                                    </TextBlock>
+                                    <TextBox Style="{StaticResource MonoTextBox}"
+                                             Text="{Binding ContainerName, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+                                </StackPanel>
 
-                        <Label Content="Speicher-Limit (z. B. 8G, 16G — leer = unbegrenzt)" Margin="0,12,0,0" />
-                        <TextBox Text="{Binding MemoryLimit, UpdateSourceTrigger=PropertyChanged}" />
+                                <StackPanel Grid.Row="0" Grid.Column="2">
+                                    <TextBlock FontSize="12" FontWeight="Medium" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6">
+                                        <Run Text="Country" />
+                                        <Run Text="*" Foreground="{StaticResource Brand}" />
+                                    </TextBlock>
+                                    <ComboBox ItemsSource="{Binding Countries}"
+                                              SelectedItem="{Binding SelectedCountry}"
+                                              IsEditable="True" />
+                                </StackPanel>
 
-                        <Label Content="Isolation-Mode" Margin="0,12,0,0" />
-                        <ComboBox ItemsSource="{Binding IsolationModes}"
-                                  SelectedItem="{Binding SelectedIsolation}" />
+                                <!-- Version + Artifact-Typ -->
+                                <StackPanel Grid.Row="2" Grid.Column="0">
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" FontSize="12" FontWeight="Medium" Foreground="{StaticResource TextSecondary}">
+                                            <Run Text="BC-Version" />
+                                            <Run Text="*" Foreground="{StaticResource Brand}" />
+                                        </TextBlock>
+                                        <Button Grid.Column="1"
+                                                Style="{StaticResource SmallGhostButton}"
+                                                Content="Aktualisieren"
+                                                Command="{Binding ReloadVersionsCommand}"
+                                                IsEnabled="{Binding IsLoadingVersions, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
+                                    </Grid>
+                                    <ComboBox ItemsSource="{Binding AvailableVersions}"
+                                              SelectedItem="{Binding SelectedVersion}"
+                                              DisplayMemberPath="Display" />
+                                    <StackPanel Orientation="Horizontal" Margin="2,4,0,0">
+                                        <TextBlock Text="Lade Versionen…"
+                                                   FontSize="11"
+                                                   Foreground="{StaticResource TextTertiary}"
+                                                   Visibility="{Binding IsLoadingVersions, Converter={StaticResource BoolToVis}}" />
+                                        <TextBlock FontSize="11"
+                                                   Foreground="{StaticResource TextTertiary}"
+                                                   Visibility="{Binding IsLoadingVersions, Converter={StaticResource BoolToVis}, ConverterParameter=invert}">
+                                            <Run Text="Aufgelöst:" />
+                                            <Run Text="{Binding ResolvedBuild, FallbackValue=unbekannt, TargetNullValue=unbekannt, Mode=OneWay}"
+                                                 FontWeight="SemiBold"
+                                                 FontFamily="{StaticResource MonoFont}" />
+                                        </TextBlock>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="2" Grid.Column="2">
+                                    <TextBlock Text="Artifact-Typ"
+                                               FontSize="12" FontWeight="Medium"
+                                               Foreground="{StaticResource TextSecondary}"
+                                               Margin="0,0,0,6" />
+                                    <Border Style="{StaticResource SegmentGroup}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <RadioButton GroupName="ArtifactTypeSeg"
+                                                         Style="{StaticResource SegmentRadio}"
+                                                         Content="Sandbox"
+                                                         IsChecked="{Binding SelectedArtifactType, Converter={StaticResource Equals}, ConverterParameter={x:Static models:ArtifactType.Sandbox}, Mode=TwoWay}" />
+                                            <RadioButton GroupName="ArtifactTypeSeg"
+                                                         Style="{StaticResource SegmentRadio}"
+                                                         Content="OnPrem"
+                                                         IsChecked="{Binding SelectedArtifactType, Converter={StaticResource Equals}, ConverterParameter={x:Static models:ArtifactType.OnPrem}, Mode=TwoWay}" />
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- Card: Authentifizierung -->
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,18">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <Border Grid.Row="0"
+                                    Padding="20,14"
+                                    BorderBrush="{StaticResource Border}"
+                                    BorderThickness="0,0,0,1">
+                                <StackPanel>
+                                    <TextBlock Text="Authentifizierung" Style="{StaticResource CardTitle}" />
+                                    <TextBlock Text="Zugangsdaten — Passwort als SecureString" Style="{StaticResource CardSub}" Margin="0,2,0,0" />
+                                </StackPanel>
+                            </Border>
+
+                            <Grid Grid.Row="1" Margin="20,16,20,18">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="14" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="14" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="14" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Auth-Typ + Lizenz -->
+                                <StackPanel Grid.Row="0" Grid.Column="0">
+                                    <TextBlock Text="Auth-Typ" FontSize="12" FontWeight="Medium" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6" />
+                                    <Border Style="{StaticResource SegmentGroup}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <RadioButton GroupName="AuthTypeSeg"
+                                                         Style="{StaticResource SegmentRadio}"
+                                                         Content="NavUserPassword"
+                                                         IsChecked="{Binding SelectedAuthType, Converter={StaticResource Equals}, ConverterParameter={x:Static models:AuthType.NavUserPassword}, Mode=TwoWay}" />
+                                            <RadioButton GroupName="AuthTypeSeg"
+                                                         Style="{StaticResource SegmentRadio}"
+                                                         Content="Windows"
+                                                         IsChecked="{Binding SelectedAuthType, Converter={StaticResource Equals}, ConverterParameter={x:Static models:AuthType.Windows}, Mode=TwoWay}" />
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="0" Grid.Column="2">
+                                    <TextBlock Text="Lizenz-Datei (optional)" FontSize="12" FontWeight="Medium" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Grid.Column="0"
+                                                 Style="{StaticResource MonoTextBox}"
+                                                 Text="{Binding LicenseFilePath, UpdateSourceTrigger=PropertyChanged}"
+                                                 IsReadOnly="True" />
+                                        <Button Grid.Column="1"
+                                                Content="…"
+                                                MinWidth="40"
+                                                Margin="6,0,0,0"
+                                                Command="{Binding PickLicenseFileCommand}" />
+                                    </Grid>
+                                </StackPanel>
+
+                                <!-- Username + Passwort -->
+                                <StackPanel Grid.Row="2" Grid.Column="0">
+                                    <TextBlock Text="Username" FontSize="12" FontWeight="Medium" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6" />
+                                    <TextBox Style="{StaticResource MonoTextBox}"
+                                             Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="2" Grid.Column="2">
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="Passwort" FontSize="12" FontWeight="Medium" Foreground="{StaticResource TextSecondary}" />
+                                        <CheckBox Grid.Column="1"
+                                                  Content="Anzeigen"
+                                                  FontSize="11"
+                                                  Foreground="{StaticResource TextTertiary}"
+                                                  IsChecked="{Binding ShowPassword}" />
+                                    </Grid>
+                                    <Grid>
+                                        <PasswordBox svc:PasswordBoxAssistant.BindPassword="True"
+                                                     svc:PasswordBoxAssistant.PlainPassword="{Binding Password, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                     Visibility="{Binding ShowPassword, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
+                                        <TextBox Style="{StaticResource MonoTextBox}"
+                                                 Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}"
+                                                 Visibility="{Binding ShowPassword, Converter={StaticResource BoolToVis}}" />
+                                    </Grid>
+                                </StackPanel>
+
+                                <!-- EULA + AL -->
+                                <StackPanel Grid.Row="4" Grid.Column="0" Orientation="Horizontal">
+                                    <CheckBox Content="EULA akzeptieren" IsChecked="{Binding AcceptEula}" />
+                                </StackPanel>
+                                <StackPanel Grid.Row="4" Grid.Column="2" Orientation="Horizontal">
+                                    <CheckBox Content="AL-Tooling einbinden" IsChecked="{Binding IncludeAL}" />
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- Card: Erweiterte Optionen (Expander-look) -->
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,18">
+                        <Expander IsExpanded="{Binding ShowAdvanced}" Background="Transparent" BorderThickness="0">
+                            <Expander.Header>
+                                <StackPanel Margin="0,2">
+                                    <TextBlock Text="Erweiterte Optionen" Style="{StaticResource CardTitle}" />
+                                    <TextBlock Text="Multitenant, Memory, Isolation, TestToolkit" Style="{StaticResource CardSub}" Margin="0,2,0,0" />
+                                </StackPanel>
+                            </Expander.Header>
+                            <Grid Margin="0,12,0,4">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="14" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="14" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <CheckBox Grid.Row="0" Grid.Column="0"
+                                          Style="{StaticResource ToggleSwitch}"
+                                          IsChecked="{Binding Multitenant}">
+                                    <StackPanel>
+                                        <TextBlock Text="MultiTenant" />
+                                        <TextBlock Text="Pro Tenant separate DB" FontSize="11" Foreground="{StaticResource TextTertiary}" />
+                                    </StackPanel>
+                                </CheckBox>
+
+                                <CheckBox Grid.Row="0" Grid.Column="2"
+                                          Style="{StaticResource ToggleSwitch}"
+                                          IsChecked="{Binding IncludeTestToolkit}">
+                                    <StackPanel>
+                                        <TextBlock Text="TestToolkit installieren" />
+                                        <TextBlock Text="Performance- + Test-Toolkit" FontSize="11" Foreground="{StaticResource TextTertiary}" />
+                                    </StackPanel>
+                                </CheckBox>
+
+                                <StackPanel Grid.Row="2" Grid.Column="0">
+                                    <TextBlock Text="Memory-Limit" FontSize="12" FontWeight="Medium" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6" />
+                                    <TextBox Style="{StaticResource MonoTextBox}"
+                                             Text="{Binding MemoryLimit, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="z. B. 8G, 16G — leer = unbegrenzt" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="2" Grid.Column="2">
+                                    <TextBlock Text="Isolation-Mode" FontSize="12" FontWeight="Medium" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,6" />
+                                    <ComboBox ItemsSource="{Binding IsolationModes}"
+                                              SelectedItem="{Binding SelectedIsolation}" />
+                                </StackPanel>
+                            </Grid>
+                        </Expander>
+                    </Border>
+
+                    <!-- Action-Row -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,4,0,0">
+                        <Button Content="Container erstellen"
+                                Style="{StaticResource PrimaryButton}"
+                                MinWidth="180"
+                                Command="{Binding CreateCommand}" />
                     </StackPanel>
-                </Expander>
+                    </StackPanel>
+                </ScrollViewer>
 
-                <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
-                    <Button Content="Container erstellen"
-                            Style="{StaticResource PrimaryButton}"
-                            Margin="0,0,8,0"
-                            Command="{Binding CreateCommand}" />
-                </StackPanel>
-            </StackPanel>
-        </ScrollViewer>
+                <!-- RIGHT: Live-Output-Card — füllt verfügbare Höhe; Console intern scrollbar -->
+                <Border Grid.Column="2" Style="{StaticResource Card}" VerticalAlignment="Stretch">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
 
-        <!-- Live-Output rechts; Working-Overlay drüber wenn IsRunning -->
-        <Grid Grid.Column="2">
-            <Border Background="#101010"
-                    BorderBrush="{StaticResource PanelBorder}"
-                    BorderThickness="1"
-                    CornerRadius="{StaticResource CardCorner}">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="Live-Output"
-                               Foreground="#CCC" Padding="12,6"
-                               FontFamily="{StaticResource MonoFont}" />
-                    <TextBox Grid.Row="1"
-                             Text="{Binding Output, Mode=OneWay}"
-                             IsReadOnly="True"
-                             Background="Transparent"
-                             Foreground="#DDDDDD"
-                             BorderThickness="0"
-                             Padding="12,4,12,12"
-                             FontFamily="{StaticResource MonoFont}"
-                             FontSize="12"
-                             VerticalScrollBarVisibility="Auto"
-                             HorizontalScrollBarVisibility="Auto"
-                             TextWrapping="NoWrap" />
-                </Grid>
-            </Border>
+                        <!-- Card-Head -->
+                        <Border Grid.Row="0"
+                                Padding="20,14"
+                                BorderBrush="{StaticResource Border}"
+                                BorderThickness="0,0,0,1">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Live-Output" Style="{StaticResource CardTitle}" />
+                                    <TextBlock Style="{StaticResource CardSub}" Margin="0,2,0,0">
+                                        <Run Text="{Binding ContainerName, FallbackValue=bcdev, Mode=OneWay}" FontFamily="{StaticResource MonoFont}" />
+                                        <Run Text=" — " />
+                                        <Run Text="{Binding CreateProgressText, FallbackValue=Bereit, Mode=OneWay}" />
+                                    </TextBlock>
+                                </StackPanel>
+                                <Border Grid.Column="1"
+                                        Style="{StaticResource Badge}"
+                                        Background="{StaticResource BrandSoft}"
+                                        BorderBrush="Transparent"
+                                        Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="6" Height="6" Fill="{StaticResource Brand}" Margin="0,0,5,0" VerticalAlignment="Center" />
+                                        <TextBlock Text="läuft" Foreground="{StaticResource Brand}" FontSize="11" FontWeight="Medium" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </Border>
 
-            <!-- Working-Overlay: halb-transparent, drehendes Logo, ProgressBar, Status-Text, Cancel-Button -->
-            <Border Background="#CC101010"
-                    CornerRadius="{StaticResource CardCorner}"
-                    Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}">
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Width="420">
-                    <Image Source="pack://application:,,,/Assets/logo.png"
-                           Width="96" Height="96"
-                           RenderOptions.BitmapScalingMode="HighQuality"
-                           HorizontalAlignment="Center">
-                        <Image.RenderTransform>
-                            <RotateTransform x:Name="SpinnerRotation" Angle="0" CenterX="48" CenterY="48" />
-                        </Image.RenderTransform>
-                        <Image.Triggers>
-                            <EventTrigger RoutedEvent="Image.Loaded">
-                                <BeginStoryboard>
-                                    <Storyboard RepeatBehavior="Forever">
-                                        <DoubleAnimation Storyboard.TargetName="SpinnerRotation"
-                                                         Storyboard.TargetProperty="Angle"
-                                                         From="0" To="360"
-                                                         Duration="0:0:2.5" />
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </EventTrigger>
-                        </Image.Triggers>
-                    </Image>
-                    <TextBlock Text="Container wird erstellt …"
-                               Foreground="White"
-                               FontSize="18"
-                               FontWeight="SemiBold"
-                               HorizontalAlignment="Center"
-                               Margin="0,18,0,4" />
-                    <TextBlock Text="Erster Start lädt das BC-Image (~10–15 GB) — kann mehrere Minuten dauern."
-                               Foreground="#BFBFBF"
-                               FontSize="12"
-                               HorizontalAlignment="Center"
-                               TextWrapping="Wrap"
-                               TextAlignment="Center" />
+                        <!-- Progress-Sektion -->
+                        <Border Grid.Row="1"
+                                Padding="20,14"
+                                BorderBrush="{StaticResource Border}"
+                                BorderThickness="0,0,0,1">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="Fortschritt"
+                                               FontSize="12"
+                                               FontWeight="Medium"
+                                               Foreground="{StaticResource TextSecondary}" />
+                                    <TextBlock Grid.Column="1"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource Brand}">
+                                        <Run Text="{Binding CreateProgressPercent, Mode=OneWay}" />
+                                        <Run Text="%" />
+                                    </TextBlock>
+                                </Grid>
 
-                    <!-- Stufenbasierte Fortschritts-Anzeige (kein präzise Prozent-API hinter New-BcContainer) -->
-                    <ProgressBar Margin="0,18,0,0"
-                                 Height="10"
-                                 Minimum="0" Maximum="100"
-                                 Value="{Binding CreateProgressPercent, Mode=OneWay}"
-                                 IsIndeterminate="{Binding IsCreateProgressIndeterminate}"
-                                 Foreground="{StaticResource BrandRed}"
-                                 Background="#262626"
-                                 BorderThickness="0" />
-                    <Grid Margin="0,6,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0"
-                                   Text="{Binding CreateProgressText}"
-                                   Foreground="#DDDDDD"
-                                   FontSize="12" />
-                        <TextBlock Grid.Column="1"
-                                   Foreground="#BFBFBF"
-                                   FontSize="12"
-                                   FontFamily="{StaticResource MonoFont}">
-                            <Run Text="{Binding CreateProgressPercent, Mode=OneWay}" />
-                            <Run Text=" %" />
-                        </TextBlock>
+                                <ProgressBar Margin="0,8,0,0"
+                                             Height="6"
+                                             Minimum="0" Maximum="100"
+                                             Value="{Binding CreateProgressPercent, Mode=OneWay}"
+                                             IsIndeterminate="{Binding IsCreateProgressIndeterminate}"
+                                             Foreground="{StaticResource Brand}"
+                                             Background="{StaticResource BgSubtle}" />
+
+                                <TextBlock Text="{Binding CreateProgressText}"
+                                           FontSize="12"
+                                           Foreground="{StaticResource TextSecondary}"
+                                           Margin="0,8,0,0" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Console -->
+                        <Border Grid.Row="2"
+                                Background="{StaticResource BgCode}"
+                                BorderBrush="{StaticResource Border}"
+                                BorderThickness="0,0,0,1"
+                                MinHeight="240">
+                            <TextBox x:Name="OutputBox"
+                                     Text="{Binding Output, Mode=OneWay}"
+                                     IsReadOnly="True"
+                                     Background="Transparent"
+                                     Foreground="{StaticResource TextSecondary}"
+                                     BorderThickness="0"
+                                     Padding="16,12"
+                                     FontFamily="{StaticResource MonoFont}"
+                                     FontSize="12"
+                                     VerticalScrollBarVisibility="Auto"
+                                     HorizontalScrollBarVisibility="Auto"
+                                     TextWrapping="NoWrap"
+                                     TextChanged="OutputBox_TextChanged" />
+                        </Border>
+
+                        <!-- Card-Foot -->
+                        <Border Grid.Row="3"
+                                Background="{StaticResource BgSidebar}"
+                                CornerRadius="0,0,12,12"
+                                Padding="14,10">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                    <TextBlock Text="Externer powershell.exe-Subprozess"
+                                               FontSize="11"
+                                               Foreground="{StaticResource TextTertiary}"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                                <Button Grid.Column="2"
+                                        Style="{StaticResource SmallDangerButton}"
+                                        Content="Abbrechen"
+                                        Command="{Binding CancelCommand}"
+                                        Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}" />
+                            </Grid>
+                        </Border>
                     </Grid>
-
-                    <Button Content="Abbrechen"
-                            Margin="0,22,0,0"
-                            HorizontalAlignment="Center"
-                            MinWidth="140"
-                            Command="{Binding CancelCommand}" />
-                </StackPanel>
-            </Border>
-        </Grid>
+                </Border>
+            </Grid>
     </Grid>
 </UserControl>

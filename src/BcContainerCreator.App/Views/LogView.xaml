@@ -6,50 +6,121 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d">
-    <Grid Margin="12">
+    <Grid Margin="36,28,36,40">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
-            <Button Content="Kopieren" Padding="10,4" Command="{Binding CopyCommand}" Margin="0,0,6,0" />
-            <Button Content="Speichern als…" Padding="10,4" Command="{Binding SaveCommand}" Margin="0,0,6,0" />
-            <Button Content="Leeren" Padding="10,4" Command="{Binding ClearCommand}" Margin="0,0,12,0" />
-            <CheckBox Content="Auto-Scroll" IsChecked="{Binding AutoScroll}" VerticalAlignment="Center" />
-        </StackPanel>
+        <!-- Page-Head -->
+        <Grid Grid.Row="0" Margin="0,0,0,18">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
 
-        <Border Grid.Row="1"
-                Background="#FFFFFF"
-                BorderBrush="{StaticResource PanelBorder}"
-                BorderThickness="1">
-            <ListBox x:Name="LogList"
-                     ItemsSource="{Binding Entries}"
-                     BorderThickness="0"
-                     Background="Transparent"
-                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                     VirtualizingStackPanel.IsVirtualizing="True"
-                     VirtualizingStackPanel.VirtualizationMode="Recycling">
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm:ss.fff}}"
-                                       Foreground="#888"
-                                       FontFamily="{StaticResource MonoFont}"
-                                       Margin="0,0,8,0" />
-                            <TextBlock Text="{Binding Level}"
-                                       Width="80"
-                                       FontWeight="SemiBold"
-                                       Foreground="{Binding Level, Converter={StaticResource LevelToBrush}}"
-                                       FontFamily="{StaticResource MonoFont}" />
-                            <TextBlock Text="{Binding Message}"
-                                       Foreground="{Binding Level, Converter={StaticResource LevelToBrush}}"
-                                       FontFamily="{StaticResource MonoFont}"
-                                       TextWrapping="Wrap" />
+            <StackPanel Grid.Column="0">
+                <TextBlock Style="{StaticResource Crumb}">
+                    <Run Text="Werkzeuge" />
+                    <Run Text="  /  " Foreground="{StaticResource TextTertiary}" />
+                    <Run Text="Logs" />
+                </TextBlock>
+                <TextBlock Text="Live-Log" Style="{StaticResource PageTitle}" />
+                <TextBlock Style="{StaticResource PageSubtitle}">
+                    <Run Text="Streamt aus dem In-Memory-Sink. File-Logs liegen unter" />
+                    <Run Text="%ProgramData%\BcContainerCreator\Logs" FontFamily="{StaticResource MonoFont}" Foreground="{StaticResource TextSecondary}" />
+                    <Run Text="— täglich rotierend, 14 Tage Retention." />
+                </TextBlock>
+            </StackPanel>
+        </Grid>
+
+        <!-- Card mit Log-Liste -->
+        <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- Toolbar -->
+                <Border Grid.Row="0"
+                        Padding="14,10"
+                        BorderBrush="{StaticResource Border}"
+                        BorderThickness="0,0,0,1"
+                        CornerRadius="12,12,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                            <CheckBox Style="{StaticResource ToggleSwitch}"
+                                      IsChecked="{Binding AutoScroll}"
+                                      Content="Auto-Scroll"
+                                      VerticalAlignment="Center" />
                         </StackPanel>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <Button Content="Kopieren"
+                                    Style="{StaticResource SmallButton}"
+                                    Margin="0,0,6,0"
+                                    Command="{Binding CopyCommand}" />
+                            <Button Content="Speichern"
+                                    Style="{StaticResource SmallButton}"
+                                    Margin="0,0,6,0"
+                                    Command="{Binding SaveCommand}" />
+                            <Button Content="Leeren"
+                                    Style="{StaticResource SmallGhostButton}"
+                                    Command="{Binding ClearCommand}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Console-Area -->
+                <Border Grid.Row="1"
+                        Background="{StaticResource BgCode}"
+                        CornerRadius="0,0,12,12">
+                    <ListBox x:Name="LogList"
+                             ItemsSource="{Binding Entries}"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             Padding="14,10"
+                             ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                             VirtualizingStackPanel.IsVirtualizing="True"
+                             VirtualizingStackPanel.VirtualizationMode="Recycling">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="60" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="{Binding Timestamp, StringFormat={}{0:HH:mm:ss.fff}}"
+                                               Foreground="{StaticResource TextTertiary}"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               FontSize="12"
+                                               Margin="0,0,12,0" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding Level}"
+                                               FontWeight="SemiBold"
+                                               Foreground="{Binding Level, Converter={StaticResource LevelToBrush}}"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               FontSize="11" />
+                                    <TextBlock Grid.Column="2"
+                                               Text="{Binding Message}"
+                                               Foreground="{Binding Level, Converter={StaticResource LevelToBrush}}"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               FontSize="12"
+                                               TextWrapping="Wrap" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+            </Grid>
         </Border>
     </Grid>
 </UserControl>

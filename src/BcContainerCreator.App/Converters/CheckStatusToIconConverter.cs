@@ -10,10 +10,10 @@ public sealed class CheckStatusToIconConverter : IValueConverter
         value is CheckStatus s
             ? s switch
             {
-                CheckStatus.Ok => "OK",
+                CheckStatus.Ok => "✓",
                 CheckStatus.Warning => "!",
-                CheckStatus.Failed => "X",
-                _ => "..."
+                CheckStatus.Failed => "✕",
+                _ => "…"
             }
             : "?";
 

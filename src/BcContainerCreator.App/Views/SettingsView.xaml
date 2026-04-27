@@ -6,80 +6,197 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d">
-    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
-        <StackPanel MaxWidth="780" HorizontalAlignment="Left">
-            <TextBlock Text="Einstellungen &amp; Info"
-                       FontSize="18" FontWeight="SemiBold"
-                       Margin="0,0,0,16" />
 
-            <!-- Über-Card -->
-            <Border Style="{StaticResource Card}" Margin="0,0,0,12">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="180" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
+    <UserControl.Resources>
+        <Style x:Key="KvKey" TargetType="{x:Type TextBlock}">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{StaticResource TextTertiary}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="KvValue" TargetType="{x:Type TextBlock}">
+            <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </UserControl.Resources>
 
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="App-Version"
-                               FontWeight="SemiBold" Foreground="{StaticResource TextMuted}" />
-                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding AppVersion}"
-                               FontFamily="{StaticResource MonoFont}" />
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <Grid Margin="36,28,36,40" MaxWidth="1080" HorizontalAlignment="Stretch">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text=".NET / OS"
-                               FontWeight="SemiBold" Foreground="{StaticResource TextMuted}"
-                               Margin="0,8,0,0" />
-                    <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,8,0,0">
-                        <TextBlock Text="{Binding DotNetVersion, StringFormat=.NET {0}}"
-                                   FontFamily="{StaticResource MonoFont}" />
-                        <TextBlock Text="{Binding OsVersion}"
-                                   FontFamily="{StaticResource MonoFont}"
-                                   Foreground="{StaticResource TextMuted}"
-                                   FontSize="12" />
-                    </StackPanel>
-                </Grid>
-            </Border>
-
-            <!-- Ausführungs-Kontext -->
-            <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+            <!-- Page-Head -->
+            <Grid Grid.Row="0" Margin="0,0,0,22">
                 <StackPanel>
-                    <TextBlock Text="Ausführungs-Kontext"
-                               FontWeight="SemiBold"
-                               Foreground="{StaticResource TextMuted}"
-                               Margin="0,0,0,6" />
-                    <TextBlock Text="{Binding ContextLabel}" />
-                    <TextBlock Text="Admin-pflichtige Operationen (Docker-Modus-Wechsel, Docker-Desktop-Install) starten on demand einen UAC-Prompt — dort den lokalen Admin-Account angeben (z. B. .\admin)."
-                               TextWrapping="Wrap"
-                               Foreground="{StaticResource TextMuted}"
-                               FontSize="12"
-                               Margin="0,8,0,0" />
+                    <TextBlock Style="{StaticResource Crumb}">
+                        <Run Text="Werkzeuge" />
+                        <Run Text="  /  " Foreground="{StaticResource TextTertiary}" />
+                        <Run Text="Einstellungen" />
+                    </TextBlock>
+                    <TextBlock Text="Einstellungen" Style="{StaticResource PageTitle}" />
+                    <TextBlock Text="App-Info, Logs, Ausführungs-Kontext." Style="{StaticResource PageSubtitle}" />
                 </StackPanel>
-            </Border>
+            </Grid>
 
-            <!-- Logging -->
-            <Border Style="{StaticResource Card}" Margin="0,0,0,12">
-                <StackPanel>
-                    <TextBlock Text="Logging"
-                               FontWeight="SemiBold"
-                               Foreground="{StaticResource TextMuted}"
-                               Margin="0,0,0,6" />
-                    <TextBlock Text="Log-Dateien rollieren täglich, 14 Tage Retention."
-                               Foreground="{StaticResource TextMuted}"
-                               FontSize="12"
-                               Margin="0,0,0,8" />
-                    <TextBox Text="{Binding LogFolder, Mode=OneWay}"
-                             IsReadOnly="True"
-                             FontFamily="{StaticResource MonoFont}" />
-                    <Button Content="Log-Ordner öffnen"
-                            HorizontalAlignment="Left"
-                            Margin="0,8,0,0"
-                            Command="{Binding OpenLogFolderCommand}" />
-                </StackPanel>
-            </Border>
+            <!-- Cards -->
+            <StackPanel Grid.Row="1">
 
-        </StackPanel>
+                <!-- Über -->
+                <Border Style="{StaticResource Card}" Margin="0,0,0,18">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0"
+                                Padding="20,14"
+                                BorderBrush="{StaticResource Border}"
+                                BorderThickness="0,0,0,1">
+                            <TextBlock Text="Über" Style="{StaticResource CardTitle}" />
+                        </Border>
+
+                        <Grid Grid.Row="1">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="180" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <Border Grid.Row="0" Grid.ColumnSpan="2" Padding="20,12" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Version" Style="{StaticResource KvKey}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding AppVersion}" Style="{StaticResource KvValue}" />
+                                </Grid>
+                            </Border>
+
+                            <Border Grid.Row="1" Grid.ColumnSpan="2" Padding="20,12" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Runtime" Style="{StaticResource KvKey}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding DotNetVersion, StringFormat=.NET {0} — WPF}" Style="{StaticResource KvValue}" />
+                                </Grid>
+                            </Border>
+
+                            <Border Grid.Row="2" Grid.ColumnSpan="2" Padding="20,12" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Betriebssystem" Style="{StaticResource KvKey}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding OsVersion}" Style="{StaticResource KvValue}" />
+                                </Grid>
+                            </Border>
+
+                            <Border Grid.Row="3" Grid.ColumnSpan="2" Padding="20,12">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Ausführung" Style="{StaticResource KvKey}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding ContextLabel}" Style="{StaticResource KvValue}" />
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <!-- Logs & Diagnose -->
+                <Border Style="{StaticResource Card}" Margin="0,0,0,18">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0"
+                                Padding="20,14"
+                                BorderBrush="{StaticResource Border}"
+                                BorderThickness="0,0,0,1">
+                            <TextBlock Text="Logs &amp; Diagnose" Style="{StaticResource CardTitle}" />
+                        </Border>
+
+                        <Grid Grid.Row="1" Margin="20,16,20,18">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Log-Folder" FontSize="13" FontWeight="Medium" Foreground="{StaticResource Text}" />
+                                <TextBlock Text="{Binding LogFolder}"
+                                           FontFamily="{StaticResource MonoFont}"
+                                           FontSize="11"
+                                           Foreground="{StaticResource TextTertiary}"
+                                           Margin="0,4,0,0"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="Rotierend pro Tag, 14 Tage Retention."
+                                           FontSize="11"
+                                           Foreground="{StaticResource TextTertiary}"
+                                           Margin="0,4,0,0" />
+                            </StackPanel>
+
+                            <Button Grid.Column="1"
+                                    Content="Öffnen"
+                                    Style="{StaticResource SmallButton}"
+                                    VerticalAlignment="Top"
+                                    Command="{Binding OpenLogFolderCommand}" />
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <!-- Hinweis-Card: Admin-via-UAC -->
+                <Border Style="{StaticResource Card}">
+                    <Grid Margin="20,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0"
+                                Width="32" Height="32"
+                                CornerRadius="8"
+                                Background="{StaticResource InfoSoft}"
+                                VerticalAlignment="Top">
+                            <Path Width="14" Height="14"
+                                  Stretch="Uniform"
+                                  Stroke="{StaticResource Info}"
+                                  StrokeThickness="1.8"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Data="M 12 22 C 12 22 20 18 20 12 L 20 5 L 12 2 L 4 5 L 4 12 C 4 18 12 22 12 22 Z M 9 12 L 11 14 L 15 10" />
+                        </Border>
+                        <StackPanel Grid.Column="1" Margin="14,0,0,0">
+                            <TextBlock Text="Admin-Aktionen via UAC" Style="{StaticResource CardTitle}" />
+                            <TextBlock Style="{StaticResource CardSub}"
+                                       Margin="0,4,0,0"
+                                       TextWrapping="Wrap"
+                                       Text="Admin-pflichtige Operationen (Docker-Modus-Wechsel, Docker-Desktop-Install) starten on demand einen UAC-Prompt — dort den lokalen Admin-Account angeben (z. B. .\admin)." />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+            </StackPanel>
+        </Grid>
     </ScrollViewer>
 </UserControl>

@@ -6,127 +6,349 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d">
-    <Grid Margin="12">
+
+    <UserControl.Resources>
+        <Style x:Key="SummaryTile" TargetType="{x:Type Border}" BasedOn="{StaticResource Card}">
+            <Setter Property="Padding" Value="14,12" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="36,28,36,40">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0" Margin="0,0,0,12">
+        <!-- Page-Head -->
+        <Grid Grid.Row="0" Margin="0,0,0,18">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0" Orientation="Horizontal">
-                <Button Content="Aktualisieren"
-                        Style="{StaticResource PrimaryButton}"
-                        Margin="0,0,12,0"
-                        Command="{Binding RefreshCommand}" />
-                <TextBlock Text="{Binding StatusText}"
-                           VerticalAlignment="Center"
-                           Foreground="{StaticResource TextMuted}" />
+
+            <StackPanel Grid.Column="0">
+                <TextBlock Style="{StaticResource Crumb}">
+                    <Run Text="Werkzeuge" />
+                    <Run Text="  /  " Foreground="{StaticResource TextTertiary}" />
+                    <Run Text="Container" />
+                </TextBlock>
+                <TextBlock Text="Container" Style="{StaticResource PageTitle}" />
+                <TextBlock Style="{StaticResource PageSubtitle}">
+                    <Run Text="Lokale BC-Container —" />
+                    <Run Text="{Binding StatusText}" Foreground="{StaticResource TextSecondary}" />
+                </TextBlock>
             </StackPanel>
-            <CheckBox Grid.Column="2"
-                      Content="Auto-Refresh (10s)"
-                      VerticalAlignment="Center"
+
+            <CheckBox Grid.Column="1"
+                      Style="{StaticResource ToggleSwitch}"
+                      VerticalAlignment="Bottom"
+                      Margin="0,0,12,4"
+                      Content="Auto-Refresh (10 s)"
                       IsChecked="{Binding AutoRefreshEnabled}" />
+
+            <Button Grid.Column="2"
+                    Content="Aktualisieren"
+                    Margin="0,0,8,0"
+                    VerticalAlignment="Bottom"
+                    Command="{Binding RefreshCommand}" />
         </Grid>
 
-        <Border Grid.Row="1"
-                Background="{StaticResource Surface}"
-                BorderBrush="{StaticResource SurfaceBorder}"
-                BorderThickness="1"
-                CornerRadius="{StaticResource CardCorner}">
-            <ListView ItemsSource="{Binding Containers}"
-                      BorderThickness="0"
-                      Background="Transparent"
-                      ScrollViewer.HorizontalScrollBarVisibility="Auto">
-                <ListView.View>
-                    <GridView>
-                        <GridView.Columns>
-                            <GridViewColumn Header="" Width="42">
-                                <GridViewColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <Ellipse Width="12" Height="12" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <!-- Summary-Tiles -->
+        <Grid Grid.Row="1" Margin="0,0,0,18">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="14" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="14" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="14" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Tile: Gesamt -->
+            <Border Grid.Column="0" Style="{StaticResource SummaryTile}">
+                <StackPanel Orientation="Horizontal">
+                    <Border Width="28" Height="28"
+                            CornerRadius="7"
+                            Background="{StaticResource BgSubtle}"
+                            VerticalAlignment="Center">
+                        <Path Width="14" Height="14"
+                              Stretch="Uniform"
+                              Stroke="{StaticResource Text}"
+                              StrokeThickness="1.6"
+                              StrokeLineJoin="Round"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"
+                              Data="M 22 7.7 L 22 14.3 L 12 20 L 2 14.3 L 2 7.7 L 12 2 Z M 12 12 L 12 20 M 2 7.7 L 12 12 L 22 7.7" />
+                    </Border>
+                    <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="GESAMT" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextTertiary}" />
+                        <TextBlock Text="{Binding Containers.Count}"
+                                   FontSize="18"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource Text}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Tile: Laufend -->
+            <Border Grid.Column="2" Style="{StaticResource SummaryTile}">
+                <StackPanel Orientation="Horizontal">
+                    <Border Width="28" Height="28"
+                            CornerRadius="7"
+                            Background="{StaticResource SuccessSoft}"
+                            VerticalAlignment="Center">
+                        <Path Width="10" Height="10"
+                              Stretch="Uniform"
+                              Fill="{StaticResource Success}"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"
+                              Data="M 6 3 L 20 12 L 6 21 Z" />
+                    </Border>
+                    <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="LAUFEND" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextTertiary}" />
+                        <TextBlock Text="{Binding RunningCount}"
+                                   FontSize="18"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource Success}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Tile: Gestoppt -->
+            <Border Grid.Column="4" Style="{StaticResource SummaryTile}">
+                <StackPanel Orientation="Horizontal">
+                    <Border Width="28" Height="28"
+                            CornerRadius="7"
+                            Background="{StaticResource BgSubtle}"
+                            VerticalAlignment="Center">
+                        <Border Width="10" Height="10"
+                                CornerRadius="2"
+                                Background="{StaticResource TextTertiary}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center" />
+                    </Border>
+                    <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="GESTOPPT" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextTertiary}" />
+                        <TextBlock Text="{Binding StoppedCount}"
+                                   FontSize="18"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextTertiary}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Tile: Auto-Refresh -->
+            <Border Grid.Column="6" Style="{StaticResource SummaryTile}">
+                <StackPanel Orientation="Horizontal">
+                    <Border Width="28" Height="28"
+                            CornerRadius="7"
+                            Background="{StaticResource BgSubtle}"
+                            VerticalAlignment="Center">
+                        <Path Width="14" Height="14"
+                              Stretch="Uniform"
+                              Stroke="{StaticResource Text}"
+                              StrokeThickness="1.6"
+                              StrokeLineJoin="Round"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"
+                              Data="M 21 12 A 9 9 0 0 0 12 3 A 9.75 9.75 0 0 0 5.26 5.74 L 3 8 M 3 3 L 3 8 L 8 8 M 3 12 A 9 9 0 0 0 12 21 A 9.75 9.75 0 0 0 18.74 18.26 L 21 16 M 16 16 L 21 16 L 21 21" />
+                    </Border>
+                    <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="AUTO-REFRESH" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextTertiary}" />
+                        <TextBlock FontSize="13" FontWeight="SemiBold" Margin="0,2,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="aus" />
+                                    <Setter Property="Foreground" Value="{StaticResource TextTertiary}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding AutoRefreshEnabled}" Value="True">
+                                            <Setter Property="Text" Value="aktiv" />
+                                            <Setter Property="Foreground" Value="{StaticResource Brand}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Container-Tabelle -->
+        <Border Grid.Row="2" Style="{StaticResource Card}" Padding="0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- Header -->
+                <Border Grid.Row="0"
+                        Background="{StaticResource BgSidebar}"
+                        BorderBrush="{StaticResource Border}"
+                        BorderThickness="0,0,0,1"
+                        CornerRadius="12,12,0,0">
+                    <Grid Margin="18,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2.2*" />
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="3.2*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="CONTAINER" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextTertiary}" />
+                        <TextBlock Grid.Column="1" Text="IMAGE" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextTertiary}" />
+                        <TextBlock Grid.Column="2" Text="STATUS" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextTertiary}" />
+                        <TextBlock Grid.Column="3" Text="AKTIONEN" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextTertiary}" HorizontalAlignment="Right" Margin="0,0,4,0" />
+                    </Grid>
+                </Border>
+
+                <!-- Empty-State: wird sichtbar, wenn keine Container vorhanden sind. -->
+                <Grid Grid.Row="1"
+                      MinHeight="180"
+                      Visibility="{Binding Containers.Count, Converter={StaticResource CountToVis}, ConverterParameter=invert}">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="Keine Container gefunden"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextSecondary}"
+                                   HorizontalAlignment="Center" />
+                        <TextBlock Text="Lege im Tab &quot;Container erstellen&quot; einen neuen an."
+                                   FontSize="12"
+                                   Foreground="{StaticResource TextTertiary}"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,4,0,0" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- Rows — eigener ScrollViewer, damit lange Listen die Card nicht wachsen lassen. -->
+                <ScrollViewer Grid.Row="1"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Visibility="{Binding Containers.Count, Converter={StaticResource CountToVis}}">
+                <ItemsControl ItemsSource="{Binding Containers}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:ContainerInfoViewModel}">
+                            <Border BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+                                <Grid Margin="18,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="2.2*" />
+                                        <ColumnDefinition Width="2*" />
+                                        <ColumnDefinition Width="2*" />
+                                        <ColumnDefinition Width="3.2*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Container-Spalte: Status-Dot + Name -->
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Ellipse Width="8" Height="8"
+                                                 VerticalAlignment="Center"
+                                                 Margin="0,0,10,0">
                                             <Ellipse.Style>
                                                 <Style TargetType="Ellipse">
-                                                    <Setter Property="Fill" Value="#9E9E9E" />
+                                                    <Setter Property="Fill" Value="{StaticResource TextTertiary}" />
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding IsRunning}" Value="True">
-                                                            <Setter Property="Fill" Value="#2EA04F" />
+                                                            <Setter Property="Fill" Value="{StaticResource Success}" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </Ellipse.Style>
                                         </Ellipse>
-                                    </DataTemplate>
-                                </GridViewColumn.CellTemplate>
-                            </GridViewColumn>
-                            <GridViewColumn Header="Name" Width="220" DisplayMemberBinding="{Binding Name}" />
-                            <GridViewColumn Header="Image" Width="320" DisplayMemberBinding="{Binding Image}" />
-                            <GridViewColumn Header="Status" Width="220" DisplayMemberBinding="{Binding Status}" />
-                            <GridViewColumn Header="" Width="540">
-                                <GridViewColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                            <Button Content="Web öffnen"
-                                                    Padding="12,4"
-                                                    Margin="0,0,6,0"
-                                                    MinWidth="100"
-                                                    Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}"
-                                                    IsEnabled="{Binding WebClientUrl, Converter={StaticResource BoolToVis}}"
-                                                    Command="{Binding DataContext.OpenUrlCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                    CommandParameter="{Binding}"
-                                                    ToolTip="{Binding WebClientUrl}" />
-                                            <Button Content="Info"
-                                                    Padding="12,4"
-                                                    Margin="0,0,6,0"
-                                                    MinWidth="70"
-                                                    ToolTip="Zugangsdaten anzeigen (URL, Benutzer, Passwort)"
-                                                    Command="{Binding DataContext.ShowInfoCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                    CommandParameter="{Binding}" />
-                                            <Button Content="Logs"
-                                                    Padding="12,4"
-                                                    Margin="0,0,6,0"
-                                                    MinWidth="70"
-                                                    Command="{Binding DataContext.ShowLogsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                    CommandParameter="{Binding}" />
-                                            <Button Content="Start"
-                                                    Padding="12,4"
-                                                    Margin="0,0,6,0"
-                                                    MinWidth="80"
-                                                    Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}, ConverterParameter=invert}"
-                                                    Command="{Binding DataContext.StartCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                    CommandParameter="{Binding}" />
-                                            <Button Content="Stop"
-                                                    Padding="12,4"
-                                                    Margin="0,0,6,0"
-                                                    MinWidth="80"
-                                                    Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}"
-                                                    Command="{Binding DataContext.StopCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                    CommandParameter="{Binding}" />
-                                            <Button Content="Löschen"
-                                                    Padding="12,4"
-                                                    MinWidth="90"
-                                                    Foreground="{StaticResource BrandRed}"
-                                                    Command="{Binding DataContext.RemoveCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                    CommandParameter="{Binding}" />
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Name}"
+                                                       FontFamily="{StaticResource MonoFont}"
+                                                       FontSize="13"
+                                                       FontWeight="Medium"
+                                                       Foreground="{StaticResource Text}" />
+                                            <TextBlock FontSize="11" Margin="0,1,0,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="Gestoppt" />
+                                                        <Setter Property="Foreground" Value="{StaticResource TextTertiary}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsRunning}" Value="True">
+                                                                <Setter Property="Text" Value="Läuft" />
+                                                                <Setter Property="Foreground" Value="{StaticResource Success}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
                                         </StackPanel>
-                                    </DataTemplate>
-                                </GridViewColumn.CellTemplate>
-                            </GridViewColumn>
-                        </GridView.Columns>
-                    </GridView>
-                </ListView.View>
-            </ListView>
+                                    </StackPanel>
+
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding Image}"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               FontSize="12"
+                                               Foreground="{StaticResource TextSecondary}"
+                                               TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center" />
+
+                                    <TextBlock Grid.Column="2"
+                                               Text="{Binding Status}"
+                                               FontSize="12"
+                                               Foreground="{StaticResource TextSecondary}"
+                                               TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center" />
+
+                                    <!-- Aktionen -->
+                                    <StackPanel Grid.Column="3" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                        <Button Content="Web"
+                                                Style="{StaticResource SmallButton}"
+                                                Margin="0,0,6,0"
+                                                Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}"
+                                                IsEnabled="{Binding WebClientUrl, Converter={StaticResource BoolToVis}}"
+                                                Command="{Binding DataContext.OpenUrlCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="{Binding WebClientUrl}" />
+                                        <Button Content="Info"
+                                                Style="{StaticResource SmallButton}"
+                                                Margin="0,0,6,0"
+                                                ToolTip="Zugangsdaten anzeigen"
+                                                Command="{Binding DataContext.ShowInfoCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}" />
+                                        <Button Content="Logs"
+                                                Style="{StaticResource SmallButton}"
+                                                Margin="0,0,6,0"
+                                                Command="{Binding DataContext.ShowLogsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}" />
+                                        <Button Content="Start"
+                                                Style="{StaticResource SmallButton}"
+                                                Margin="0,0,6,0"
+                                                Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}, ConverterParameter=invert}"
+                                                Command="{Binding DataContext.StartCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}" />
+                                        <Button Content="Stop"
+                                                Style="{StaticResource SmallButton}"
+                                                Margin="0,0,6,0"
+                                                Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}"
+                                                Command="{Binding DataContext.StopCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}" />
+                                        <Button Content="Löschen"
+                                                Style="{StaticResource SmallDangerButton}"
+                                                Command="{Binding DataContext.RemoveCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                </ScrollViewer>
+            </Grid>
         </Border>
 
         <ProgressBar Grid.Row="2"
-                     Height="4"
-                     Margin="0,8,0,0"
+                     Height="2"
+                     VerticalAlignment="Top"
                      IsIndeterminate="{Binding IsLoading}"
-                     Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" />
+                     Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}"
+                     Background="Transparent" />
     </Grid>
 </UserControl>

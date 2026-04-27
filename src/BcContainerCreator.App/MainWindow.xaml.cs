@@ -1,6 +1,6 @@
 using System.ComponentModel;
+using System.Reflection;
 using System.Windows;
-using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using BcContainerCreator.App.ViewModels;
 using BcContainerCreator.Core.Setup;
@@ -13,7 +13,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         TryLoadBrandAssets();
-        ApplyContextBadge();
+        ApplyHeaderInfo();
         Closing += OnClosing;
     }
 
@@ -48,18 +48,21 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ApplyContextBadge()
+    /// <summary>
+    /// Setzt Title-Bar-Suffix, Brand-Block-Version und User-Pill basierend
+    /// auf Ausführungs-Kontext und Assembly-Version.
+    /// </summary>
+    private void ApplyHeaderInfo()
     {
-        if (AdminContext.IsCurrentProcessAdmin)
-        {
-            ContextLabel.Text = "Admin-Modus";
-            ContextDot.Fill = new SolidColorBrush(Color.FromRgb(0x2E, 0xA0, 0x4F)); // grün
-        }
-        else
-        {
-            ContextLabel.Text = "Standard-User";
-            ContextDot.Fill = new SolidColorBrush(Color.FromRgb(0xE6, 0xA8, 0x00)); // gelb
-        }
+        var contextSuffix = AdminContext.IsCurrentProcessAdmin ? "Admin-Modus" : "Standard-User";
+        TitleText.Text = $"BC Container Creator — {contextSuffix}";
+        UserNameLabel.Text = Environment.UserName;
+
+        var asm = Assembly.GetExecutingAssembly();
+        var ver = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+                  ?? asm.GetName().Version?.ToString(3)
+                  ?? "1.0.0";
+        VersionLabel.Text = "v" + ver;
     }
 
     /// <summary>

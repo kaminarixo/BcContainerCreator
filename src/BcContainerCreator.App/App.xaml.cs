@@ -113,8 +113,9 @@ public partial class App : Application
         window.DataContext = _host.Services.GetRequiredService<MainViewModel>();
         window.Show();
 
-        // Diagnose initial automatisch starten — non-blocking, im Background-Task.
-        // Fehler hier dürfen die App nicht killen.
+        // Diagnose und Container-Liste initial automatisch starten — non-blocking,
+        // im Background-Task. Fehler hier dürfen die App nicht killen. Ohne den
+        // initialen Refresh würde Manage erst nach 10 s (Timer-Tick) Daten zeigen.
         _ = Task.Run(async () =>
         {
             try
@@ -126,11 +127,17 @@ public partial class App : Application
                     {
                         diag.RunAllCommand.Execute(null);
                     }
+
+                    var manage = _host.Services.GetRequiredService<ManageContainersViewModel>();
+                    if (manage.RefreshCommand.CanExecute(null))
+                    {
+                        manage.RefreshCommand.Execute(null);
+                    }
                 });
             }
             catch (Exception ex)
             {
-                Log.Warning(ex, "Initiale Diagnose fehlgeschlagen");
+                Log.Warning(ex, "Initiale Diagnose / Container-Liste fehlgeschlagen");
             }
         });
     }
