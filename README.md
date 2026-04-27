@@ -17,15 +17,15 @@
 
 ## Was ist das?
 
-Ein Windows-Desktop-Tool, das BC-Entwicklern eine GUI gibt für alles, was sonst über `BcContainerHelper` per PowerShell läuft:
+Ein Windows-Desktop-Tool, das Business-Central-Entwicklern, Consultants und Teams eine GUI für alles gibt, was sonst über `BcContainerHelper` per PowerShell läuft:
 
 - **Voraussetzungen prüfen + automatisch fixen** (Docker, BcContainerHelper, ExecutionPolicy, PSGallery, Windows-Edition, …)
-- **Container erstellen** mit Versions-Auswahl (BC LTS-Releases), MultiTenant, Memory-Limit, etc.
+- **Container erstellen** mit Versions-Auswahl, MultiTenant, Memory-Limit, Isolation-Mode usw.
 - **Container verwalten** — Liste mit Live-Status, Start, Stop, Löschen, Web-Client öffnen, Logs ansehen
 - **Zugangsdaten-Popup** pro Container (URL, User, Passwort) — Passwort lokal DPAPI-verschlüsselt
 - **Standard-User-Modus** — App startet ohne UAC, einzelne Admin-Aktionen werden on-demand elevated (lokaler Admin via UAC-Prompt)
 
-Geschrieben für Teams, die von **NAV 2017 auf BC 28** migrieren und PowerShell-unsicher sind.
+Entwickelt für Business-Central-Entwickler und Teams, die lokale BC-Container schneller, reproduzierbarer und ohne manuelle PowerShell-Schritte erstellen möchten.
 
 ---
 
@@ -43,6 +43,7 @@ Geschrieben für Teams, die von **NAV 2017 auf BC 28** migrieren und PowerShell-
 
 - **Windows 10/11 Pro / Enterprise / Education** (Home unterstützt keine Windows-Container — der Diagnose-Tab markiert das)
 - **.NET 10 Desktop Runtime (x64)** — der Installer prüft das und verlinkt den Download
+- **Windows PowerShell 5.1** (auf Windows 10/11 standardmäßig vorhanden)
 - **Docker Desktop im Windows-Container-Modus** — der Diagnose-Tab kann es per UAC-Prompt installieren / umschalten
 
 ---
@@ -51,7 +52,7 @@ Geschrieben für Teams, die von **NAV 2017 auf BC 28** migrieren und PowerShell-
 
 ### Diagnose
 
-11 Voraussetzungs-Checks mit fixbaren Aktionen:
+12 Voraussetzungs-Checks mit fixbaren Aktionen:
 
 - Ausführungs-Kontext (Admin / Standard-User)
 - Windows-Edition (Pro/Enterprise/Education vs. Home)
@@ -60,18 +61,20 @@ Geschrieben für Teams, die von **NAV 2017 auf BC 28** migrieren und PowerShell-
 - Docker installiert / läuft / im Windows-Modus
 - BcContainerHelper-Modul installiert
 - Kein konkurrierendes Legacy-Modul (`navcontainerhelper`)
+- Externer PowerShell- + BcContainerHelper-Smoke-Test (lädt das Modul in einem `powershell.exe`-Subprozess und ruft `Get-BcArtifactUrl` auf — wenn dieser Check grün ist, läuft auch `New-BcContainer` durch)
 
-Fixes laufen mit `Microsoft.PowerShell.PSResourceGet` (modern, ohne den alten PowerShellGet-1.0.0.1-Bug unter PS7-In-Process). Wo nötig wird automatisch via UAC eskaliert.
+Fixes laufen mit `Microsoft.PowerShell.PSResourceGet` (modern). Wo nötig wird automatisch via UAC eskaliert.
 
 ### Container erstellen
 
-- Versions-Dropdown mit `latest` + den letzten BC-LTS-Majors (28, 27, 26, …) inkl. konkret aufgelöstem Build
+- Versions-Dropdown mit `latest` + den letzten BC-LTS-Majors inkl. konkret aufgelöstem Build
 - Country-Dropdown (DE/W1/AT/CH/US/…)
 - Auth-Typ: `NavUserPassword` (Default) oder `Windows`
 - Username default = aktueller Windows-User; Passwort mit Show/Hide-Toggle
 - Optionaler Lizenz-Pfad
 - Erweiterte Optionen: MultiTenant, TestToolkit, Memory-Limit, Isolation-Mode
 - Live-Output rechts mit Brand-Spinner-Overlay
+- Stufenbasierte Progress-Anzeige (`New-BcContainer` liefert keine echte Prozent-API — die App mappt bekannte BcContainerHelper-Statuszeilen auf grobe Etappen)
 - Schließen während Erstellung läuft → Confirm-Dialog mit Cancel-Option
 
 ### Container verwalten
@@ -79,9 +82,10 @@ Fixes laufen mit `Microsoft.PowerShell.PSResourceGet` (modern, ohne den alten Po
 - Auto-Refresh (10s) der Container-Liste
 - Pro Container: **Web öffnen** (`http://&lt;name&gt;/BC?tenant=default`), **Info** (Zugangsdaten-Popup), **Logs** (separates Fenster mit tail-Selector), **Start / Stop**, **Löschen**
 
-### Logging &amp; Settings
+### Logging &amp; Diagnose
 
 - File-Logs unter `%ProgramData%\BcContainerCreator\Logs\` — täglich rotierend, 14 Tage Retention
+- stdout und stderr aus jedem `powershell.exe`-Aufruf werden in die App-Logs und den Live-Output gestreamt
 - Live-Log-Tab mit Copy / Save / Auto-Scroll
 - Settings-Tab mit App-Version, OS-Info, Log-Folder-Open
 
@@ -92,7 +96,7 @@ Fixes laufen mit `Microsoft.PowerShell.PSResourceGet` (modern, ohne den alten Po
 ```
 src/
   BcContainerCreator.Core/    Class Library — UI-frei, eine spätere CLI ist möglich
-    PowerShell/                IPowerShellRunner mit persistentem Runspace
+    PowerShell/                IPowerShellRunner (externer powershell.exe-Subprozess)
     Docker/                    IDockerService (CLI-Wrapper)
     Setup/                     IPreflightCheck + ISetupService + IElevationService
     Containers/                IContainerService + IContainerMetadataStore (DPAPI)
@@ -104,16 +108,18 @@ src/
     Services/                  DialogService, DispatcherProgress, PasswordBoxAssistant
 
 tests/
-  BcContainerCreator.Core.Tests/    27 xUnit-Tests
+  BcContainerCreator.Core.Tests/    35 xUnit-Tests
 ```
 
 **Kern-Entscheidungen:**
 
-- **Microsoft.PowerShell.SDK 7.6** in-process — kein externer `pwsh.exe` nötig.
-- **Persistenter Runspace** — BcContainerHelper-Modul wird einmalig geladen.
-- **PSResourceGet-Bootstrap** für PSGallery-Operations — umgeht den `$script:IsWindows`-Bug von PowerShellGet 1.0.0.1 unter PS7.
-- **Passwörter als `SecureString`** im Code; im Container-Metadata-Store via DPAPI-CurrentUser verschlüsselt.
-- **`asInvoker`-Manifest** — App läuft als Standard-User. Admin nur on-demand über `Verb=runas`.
+- **Externer PowerShell-Runner** — jedes Skript läuft in einem frischen `powershell.exe`-Subprozess (Windows PowerShell 5.1). BcContainerHelper benötigt Reflection-/`Add-Type`-Pfade, die unter einer eingebetteten SDK-Engine nicht zuverlässig funktionierten — Windows PowerShell ist hier die robustere Wahl.
+- **Kein sichtbares Konsolenfenster** — der Subprozess wird headless gestartet; stdout und stderr werden zeilenweise ausgelesen und in App-Logs sowie Live-Output gestreamt.
+- **Aufrufe werden serialisiert** — ein `SemaphoreSlim` stellt sicher, dass nur ein Skript zur gleichen Zeit läuft, sodass sich Ausgaben aus parallelen Aktionen (Diagnose, Create, List) nicht vermischen.
+- **Parameter-Übergabe per ACL-geschützter JSON-Datei** — Variablen (inkl. Passwörter) werden nie als Prozess-Argumente übergeben, sondern in eine temporäre Datei im User-Temp geschrieben, deren ACL auf den aktuellen User eingeschränkt wird; Passwörter selbst sind im Code `SecureString`.
+- **Container-Metadaten verschlüsselt** — gespeicherte Passwörter im Metadata-Store sind via DPAPI (CurrentUser-Scope) verschlüsselt und nur durch den anlegenden Windows-User lesbar.
+- **Stufenbasierter Progress** — `New-BcContainer` liefert keine Prozent-API; bekannte Statuszeilen aus dem BcContainerHelper-Output werden auf grobe Etappen (10 / 15 / 40 / 55 / 70 / 85 / 100 %) gemappt.
+- **`asInvoker`-Manifest** — App läuft als Standard-User. Admin nur on-demand über `Verb=runas` (z. B. Docker-Modus-Switch).
 
 ---
 
@@ -156,6 +162,25 @@ pwsh build/build-installer.ps1
 ## Roadmap
 
 Siehe [docs/ROADMAP.md](docs/ROADMAP.md) für die geplanten Phasen (Container-Verwaltung-Erweiterungen, Profile, Auto-Update, MSI-Distribution, …).
+
+---
+
+## Danksagung
+
+BC Container Creator wäre ohne die Arbeit folgender Projekte und Plattformen nicht möglich:
+
+- **[BcContainerHelper](https://github.com/microsoft/navcontainerhelper)** — die zentrale PowerShell-Grundlage für die Automatisierung von Business-Central-Containern. Sämtliche Container-Operationen dieser App rufen unter der Haube `BcContainerHelper`-Cmdlets auf.
+- **[Docker Desktop](https://www.docker.com/products/docker-desktop/)** — die Container-Plattform, auf der die erzeugten Business-Central-Container laufen.
+- **[Microsoft Dynamics 365 Business Central](https://dynamics.microsoft.com/business-central/)** — das Zielsystem, für das die Container bereitgestellt werden.
+- **[.NET](https://dotnet.microsoft.com/)** und **WPF** — die technische Basis der Anwendung.
+- **[CommunityToolkit.Mvvm](https://github.com/CommunityToolkit/dotnet)**, **[Serilog](https://serilog.net/)**, **[Microsoft.Extensions.Hosting](https://learn.microsoft.com/dotnet/core/extensions/generic-host)** sowie **[xUnit](https://xunit.net/)**, **[FluentAssertions](https://fluentassertions.com/)** und **[Moq](https://github.com/devlooped/moq)** — die Open-Source-Bibliotheken, die App und Tests tragen.
+- **[Inno Setup](https://jrsoftware.org/isinfo.php)** — der Installer-Builder für die Setup-Bundle-Erstellung.
+
+> BC Container Creator ist ein unabhängiges Community-Tool und steht in keiner offiziellen Verbindung zu Microsoft, Docker oder dem BcContainerHelper-Projekt.
+
+### Third-party licenses &amp; Marken
+
+Die oben genannten Projekte und ihre Marken gehören ihren jeweiligen Eigentümern; deren Lizenzbedingungen gelten unverändert. „Microsoft", „Dynamics 365" und „Business Central" sind Marken oder eingetragene Marken der Microsoft Corporation. „Docker" ist eine Marke von Docker, Inc. Alle weiteren Produkt- und Firmennamen können Marken der jeweiligen Inhaber sein.
 
 ---
 

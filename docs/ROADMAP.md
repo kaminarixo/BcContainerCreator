@@ -2,7 +2,7 @@
 
 ## Phase 1 — PoC mit tragfähiger Architektur (in Arbeit)
 
-Solution-Struktur, Core-Library, WPF-Shell mit Diagnose-, Container-Create- und Log-Tab. Funktionierende Container-Erstellung mit BcContainerHelper, persistenter PowerShell-Runspace, Cancellation, Streaming-Output, 24 Unit-Tests.
+Solution-Struktur, Core-Library, WPF-Shell mit Diagnose-, Container-Create- und Log-Tab. Funktionierende Container-Erstellung mit BcContainerHelper über externen `powershell.exe`-Subprozess, serialisierte Aufrufe, Cancellation, Streaming-Output, 35 xUnit-Tests.
 
 ## Phase 2 — Container-Verwaltung
 

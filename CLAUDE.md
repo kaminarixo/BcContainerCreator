@@ -4,13 +4,13 @@ Projekt-Kontext und Konventionen für künftige Claude-Code-Sessions in diesem R
 
 ## Projekt
 
-Windows-Desktop-App (.NET 10 / WPF), die NAV/BC-Entwicklern eine GUI für die Erstellung und Verwaltung von Docker-Containern (`BcContainerHelper`) gibt. Hintergrund: Migration NAV 2017 → BC 28, Cutover November 2026, Team ist PowerShell-unsicher.
+Windows-Desktop-App (.NET 10 / WPF), die Business-Central-Entwicklern und Teams eine GUI für die Erstellung und Verwaltung von Docker-Containern (`BcContainerHelper`) gibt — ohne manuelle PowerShell-Schritte.
 
 ## Tech-Stack (verbindlich)
 
-- **.NET 10** (`net10.0-windows` für alle Projekte — Core inkl., wegen PowerShell-SDK-Deps und `WindowsPrincipal`)
+- **.NET 10** (`net10.0-windows` für alle Projekte — Core inkl., wegen `WindowsPrincipal` und DPAPI)
 - **WPF** mit MVVM (CommunityToolkit.Mvvm)
-- **Microsoft.PowerShell.SDK 7.6.1** — In-Process PowerShell, kein Fallback nötig
+- **Externer PowerShell-Runner** — jedes Skript läuft in einem frischen `powershell.exe`-Subprozess (Windows PowerShell 5.1), headless ohne Konsolenfenster; stdout/stderr werden zeilenweise gestreamt
 - **Serilog** (File + In-Memory-Sink für Live-Log)
 - **Microsoft.Extensions.Hosting** (Generic Host als DI-Container)
 - **xUnit + FluentAssertions 7.2.0 + Moq** für Tests (FluentAssertions ab 8.x ist kommerziell — bleib auf 7.x)
@@ -19,7 +19,7 @@ Windows-Desktop-App (.NET 10 / WPF), die NAV/BC-Entwicklern eine GUI für die Er
 
 ```
 src/BcContainerCreator.Core/   Class Library (UI-frei)
-src/BcContainerCreator.App/    WPF .exe (requireAdministrator)
+src/BcContainerCreator.App/    WPF .exe (asInvoker — Admin nur on-demand)
 tests/BcContainerCreator.Core.Tests/
 docs/ROADMAP.md
 ```
@@ -34,14 +34,18 @@ docs/ROADMAP.md
 - **XML-Doc-Kommentare** an allen Public-APIs in Core.
 - **Keine Magic Strings** — Konstanten in `Core/Constants.cs`.
 - **Records** für Models (`ContainerCreateRequest`, `CheckResult`, `PSResult`).
-- **Passwörter als `SecureString`** — nie als String im PS-Skript, sondern als Runspace-Variable injizieren (siehe `ContainerService.CreateContainerAsync`).
+- **Passwörter als `SecureString`** — nie als String im PS-Skript. Werden vom Runner über eine ACL-geschützte JSON-Datei in den Subprozess gegeben (siehe `ContainerService.CreateContainerAsync`).
+- **Container-Metadaten** — gespeicherte Passwörter werden via DPAPI (CurrentUser) verschlüsselt.
 - **Conventional Commits**: `feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:`.
 
 ## Architektur-Prinzipien
 
 - **Core ist UI-frei** — eine spätere CLI muss möglich sein, ohne Refactoring.
-- **PowerShell-Runspace persistent** — `BcContainerHelper`-Module-Load dauert ~5s, deshalb Singleton-Runspace via DI.
-- **Streaming-Output** — alle PS-Streams via `IPowerShellRunner.OutputReceived` an UI; UI marshalt mit `DispatcherProgress<T>`.
+- **Externer PowerShell-Subprozess** — jedes Skript wird in einer frischen `powershell.exe` (Windows PowerShell 5.1) gestartet, headless ohne Konsolenfenster.
+- **Aufrufe serialisiert** — `SemaphoreSlim` im Runner, damit sich stdout-Zeilen aus parallelen Aktionen nicht vermischen.
+- **Parameter über ACL-geschützte Temp-JSON** — keine Argumente in der Prozesszeile, kein Klartext-Passwort in Logs.
+- **Streaming-Output** — stdout/stderr werden zeilenweise via `IPowerShellRunner.OutputReceived` an UI/Logs gestreamt; UI marshalt mit `DispatcherProgress<T>`.
+- **Stufenbasierter Progress** — `New-BcContainer` liefert keine Prozent-API; bekannte BcContainerHelper-Statuszeilen werden auf Etappen gemappt.
 - **Fehler nie schlucken** — strukturiert loggen + UI-Feedback (DialogService).
 
 ## Domänen-Wissen
@@ -56,9 +60,10 @@ docs/ROADMAP.md
 ## Wichtige Dateien
 
 - `src/BcContainerCreator.Core/Containers/ContainerService.cs` — baut den `New-BcContainer`-Aufruf.
-- `src/BcContainerCreator.Core/Setup/PreflightCheck.cs` — 10 Checks (Admin, PSVersion, ExecutionPolicy, NuGet, PSGallery, Docker × 3, BcContainerHelper, Legacy-Modul).
+- `src/BcContainerCreator.Core/Containers/ContainerMetadataStore.cs` — Persistenz pro Container, Passwort via DPAPI-CurrentUser.
+- `src/BcContainerCreator.Core/Setup/PreflightCheck.cs` — 12 Checks (Admin, Windows-Edition, PSVersion, ExecutionPolicy, NuGet, PSGallery, Docker × 3, BcContainerHelper, Legacy-Modul, externer PS- + BcContainerHelper-Smoke-Test).
 - `src/BcContainerCreator.Core/Setup/SetupService.cs` — Fix-Aktionen pro Check.
-- `src/BcContainerCreator.Core/PowerShell/PowerShellRunner.cs` — persistenter Runspace, Stream-Subscriptions, Cancellation via `BeginStop`.
+- `src/BcContainerCreator.Core/PowerShell/PowerShellRunner.cs` — startet `powershell.exe`-Subprozess pro Aufruf, serialisiert via `SemaphoreSlim`, Parameter über ACL-geschützte Temp-JSON.
 - `src/BcContainerCreator.App/App.xaml.cs` — DI-Setup, Serilog-Konfiguration, MainWindow-Bootstrap.
 
 ## Build & Test
@@ -66,7 +71,7 @@ docs/ROADMAP.md
 ```powershell
 dotnet build
 dotnet test
-dotnet run --project src/BcContainerCreator.App   # als Admin starten
+dotnet run --project src/BcContainerCreator.App   # läuft als Standard-User; Admin-Aktionen via UAC-Prompt
 dotnet publish src/BcContainerCreator.App -c Release -r win-x64 -p:PublishSingleFile=true --self-contained false
 ```
 
