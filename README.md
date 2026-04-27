@@ -161,7 +161,7 @@ pwsh build/build-installer.ps1
 
 ## Roadmap
 
-Siehe [docs/ROADMAP.md](docs/ROADMAP.md) für die geplanten Phasen (Container-Verwaltung-Erweiterungen, Profile, Auto-Update, MSI-Distribution, …).
+Siehe [docs/ROADMAP.md](docs/ROADMAP.md) für geplante Verbesserungen, mögliche Erweiterungen und spätere Ideen.
 
 ---
 
