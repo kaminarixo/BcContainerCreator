@@ -7,9 +7,11 @@ namespace BcContainerCreator.Core.Containers;
 
 /// <summary>
 /// Übersetzt einen <see cref="ContainerCreateRequest"/> in einen
-/// <c>New-BcContainer</c>-Aufruf und führt diesen aus. Das Passwort wird als
-/// <c>SecureString</c>-Variable in den Runspace injiziert — niemals als String
-/// im Skript.
+/// <c>New-BcContainer</c>-Aufruf und führt diesen aus. Username/Passwort
+/// werden über die JSON-Parameter-Datei des externen PowerShell-Runners
+/// übergeben (siehe <see cref="PowerShellRunner"/>) und im Skript via
+/// <c>$Params.Username</c> / <c>$Params.Password</c> gelesen — niemals
+/// in das Skript interpoliert oder geloggt.
 /// </summary>
 public sealed class ContainerService : IContainerService
 {
@@ -53,10 +55,13 @@ public sealed class ContainerService : IContainerService
         sb.AppendLine("Write-Information \"Artifact-URL: $artifactUrl\"");
         sb.AppendLine();
 
-        // Credential aus injiziertem SecureString aufbauen.
+        // Credential aus dem $Params-Block (extern via JSON-File). Keine
+        // String-Interpolation von Username/Password ins Skript.
         if (request.AuthType == AuthType.NavUserPassword)
         {
-            sb.AppendLine($"$cred = New-Object System.Management.Automation.PSCredential({Quote(request.Username)}, $bcPassword)");
+            sb.AppendLine("if (-not $Params -or -not $Params.Password) { throw 'Parameter-Datei fehlt oder Password nicht gesetzt.' }");
+            sb.AppendLine("$securePassword = ConvertTo-SecureString $Params.Password -AsPlainText -Force");
+            sb.AppendLine("$cred = New-Object System.Management.Automation.PSCredential($Params.Username, $securePassword)");
             sb.AppendLine();
         }
 
@@ -107,6 +112,7 @@ public sealed class ContainerService : IContainerService
         }
 
         sb.AppendLine("-updateHosts");
+        sb.AppendLine("Write-Information \"Container '\" + " + Quote(request.ContainerName) + " + \"' wurde erstellt.\"");
 
         return sb.ToString();
     }
@@ -124,16 +130,35 @@ public sealed class ContainerService : IContainerService
             request.ContainerName, request.ArtifactType, request.Country, request.Version);
 
         var script = BuildCreateScript(request);
-        var variables = new Dictionary<string, object?>();
 
-        // Passwort nur als SecureString in den Runspace.
+        // Username + Password über JSON-Param-File. Password ist SecureString,
+        // wird intern im Runner via DPAPI-freier Konvertierung in den Tempfile
+        // geschrieben und nach Run sofort gelöscht.
+        var variables = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["Username"] = request.Username,
+        };
         if (request.AuthType == AuthType.NavUserPassword)
         {
-            variables["bcPassword"] = request.Password;
+            variables["Password"] = request.Password;
         }
 
+        // Live-Output an die UI weiterleiten (PS-Stream-Lines kommen über
+        // OutputReceived rein; Container-Helper schreibt sehr viel via
+        // Write-Information / Write-Host, das landet alles auf stdout).
+        EventHandler<PowerShellOutputEventArgs> handler = (_, e) => progress?.Report(e.Message);
+        _runner.OutputReceived += handler;
+
         progress?.Report("Starte New-BcContainer (kann mehrere Minuten dauern)…");
-        var result = await _runner.ExecuteAsync(script, variables, cancellationToken).ConfigureAwait(false);
+        PSResult result;
+        try
+        {
+            result = await _runner.ExecuteAsync(script, variables, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _runner.OutputReceived -= handler;
+        }
 
         if (result.WasCancelled)
         {
@@ -143,9 +168,6 @@ public sealed class ContainerService : IContainerService
         {
             progress?.Report($"Container '{request.ContainerName}' erstellt ({result.Duration:mm\\:ss}).");
 
-            // Metadaten speichern, damit das Verwaltungs-Tab das Zugangs-Popup
-            // mit Username/Passwort füllen kann. Fehler hier dürfen das
-            // Create-Ergebnis nicht ändern — nur loggen.
             try
             {
                 await _metadata.SaveAsync(
@@ -168,7 +190,7 @@ public sealed class ContainerService : IContainerService
         }
         else
         {
-            progress?.Report($"Fehlgeschlagen: {string.Join("; ", result.Errors)}");
+            progress?.Report($"Fehlgeschlagen (ExitCode {result.ExitCode}): {string.Join("; ", result.Errors)}");
         }
 
         return result;
@@ -194,14 +216,13 @@ public sealed class ContainerService : IContainerService
                 ForEach-Object {
                     if ($_ -match '/(\d+\.\d+\.\d+\.\d+)/[^/]+/?$') { $matches[1] }
                 }
-            # Pro Major-Version den jüngsten Build wählen.
             $byMajor = $versions | Group-Object { ($_ -split '\.')[0] }
             $rows = $byMajor | ForEach-Object {
                 $latest = $_.Group | Sort-Object -Property { [Version]$_ } -Descending | Select-Object -First 1
                 "$($_.Name)|$latest"
             } | Sort-Object -Property { [int]($_ -split '\|')[0] } -Descending |
                 Select-Object -First {{topMajors}}
-            $rows
+            $rows | ForEach-Object { Write-Output $_ }
             """;
 
         var result = await _runner.ExecuteAsync(script, cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -223,11 +244,9 @@ public sealed class ContainerService : IContainerService
             var latest = parts[1].Trim();
             if (string.IsNullOrEmpty(major) || string.IsNullOrEmpty(latest)) continue;
             options.Add(new ArtifactVersionOption(Selector: major, LatestBuild: latest));
-            // Erste (höchste) Major-Version liefert den 'latest'-Build.
             newestBuild ??= latest;
         }
 
-        // 'latest' immer als Synonym der jüngsten Major obenan.
         var withLatest = new List<ArtifactVersionOption>(options.Count + 1)
         {
             new("latest", newestBuild)
@@ -239,8 +258,12 @@ public sealed class ContainerService : IContainerService
     public async Task<IReadOnlyList<ContainerInfo>> ListContainersAsync(CancellationToken cancellationToken = default)
     {
         // 'docker ps -a --format json' liefert pro Zeile EIN JSON-Objekt
-        // (NDJSON-Style). Wir lesen die Zeilen ein und parsen jede für sich.
-        const string script = @"docker ps -a --no-trunc --format '{{json .}}' 2>$null";
+        // (NDJSON-Style). Externer Runner sammelt diese in result.Objects.
+        const string script = """
+            $output = docker ps -a --no-trunc --format '{{json .}}' 2>$null
+            if ($LASTEXITCODE -ne 0) { throw "docker ps fehlgeschlagen (exit $LASTEXITCODE)" }
+            $output | ForEach-Object { Write-Output $_ }
+            """;
         var result = await _runner.ExecuteAsync(script, cancellationToken: cancellationToken).ConfigureAwait(false);
         if (!result.Success)
         {
@@ -253,6 +276,8 @@ public sealed class ContainerService : IContainerService
         {
             var line = obj?.ToString();
             if (string.IsNullOrWhiteSpace(line)) continue;
+            // Wrapper-Zeilen wie '--- FEHLER ---' überspringen.
+            if (!line.TrimStart().StartsWith("{")) continue;
             try
             {
                 using var doc = System.Text.Json.JsonDocument.Parse(line);
@@ -271,9 +296,6 @@ public sealed class ContainerService : IContainerService
                     || image.Contains("businesscentral", StringComparison.OrdinalIgnoreCase)
                     || image.Contains("bcsandbox", StringComparison.OrdinalIgnoreCase);
 
-                // BcContainerHelper trägt typischerweise einen Hostfile-Eintrag
-                // <name> -> Container-IP ein. Web-Client-URL inkl. Tenant-Query —
-                // BcContainerHelper-Output zeigt 'http://<name>/BC?tenant=default'.
                 var url = isBc && !string.IsNullOrWhiteSpace(name)
                     ? $"http://{name}/BC?tenant=default"
                     : null;
@@ -292,16 +314,18 @@ public sealed class ContainerService : IContainerService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         var quoted = QuoteForDocker(name);
-        var result = await _runner.ExecuteAsync($"docker start {quoted}; $LASTEXITCODE", cancellationToken: cancellationToken).ConfigureAwait(false);
-        return WasZeroExit(result);
+        var script = $"docker start {quoted}\nif ($LASTEXITCODE -ne 0) {{ throw \"docker start exit $LASTEXITCODE\" }}";
+        var result = await _runner.ExecuteAsync(script, cancellationToken: cancellationToken).ConfigureAwait(false);
+        return result.Success;
     }
 
     public async Task<bool> StopContainerAsync(string name, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         var quoted = QuoteForDocker(name);
-        var result = await _runner.ExecuteAsync($"docker stop {quoted}; $LASTEXITCODE", cancellationToken: cancellationToken).ConfigureAwait(false);
-        return WasZeroExit(result);
+        var script = $"docker stop {quoted}\nif ($LASTEXITCODE -ne 0) {{ throw \"docker stop exit $LASTEXITCODE\" }}";
+        var result = await _runner.ExecuteAsync(script, cancellationToken: cancellationToken).ConfigureAwait(false);
+        return result.Success;
     }
 
     public async Task<bool> RemoveContainerAsync(string name, bool force = true, CancellationToken cancellationToken = default)
@@ -309,12 +333,11 @@ public sealed class ContainerService : IContainerService
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         var quoted = QuoteForDocker(name);
         var forceFlag = force ? "-f " : string.Empty;
-        var result = await _runner.ExecuteAsync($"docker rm {forceFlag}{quoted}; $LASTEXITCODE", cancellationToken: cancellationToken).ConfigureAwait(false);
-        var ok = WasZeroExit(result);
+        var script = $"docker rm {forceFlag}{quoted}\nif ($LASTEXITCODE -ne 0) {{ throw \"docker rm exit $LASTEXITCODE\" }}";
+        var result = await _runner.ExecuteAsync(script, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var ok = result.Success;
         if (ok)
         {
-            // Metadaten mitlöschen — sonst zeigt das Info-Popup für einen
-            // späteren gleichnamigen Container falsche alte Credentials.
             try { await _metadata.DeleteAsync(name, cancellationToken).ConfigureAwait(false); }
             catch { /* nicht kritisch */ }
         }
@@ -326,25 +349,20 @@ public sealed class ContainerService : IContainerService
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         if (tail <= 0) tail = 1000;
         var quoted = QuoteForDocker(name);
-        // 2>&1 mergt stderr in stdout, Out-String konsolidiert zu einem PSObject.
-        var script = $"docker logs --tail {tail} {quoted} 2>&1 | Out-String";
+        var script = $"docker logs --tail {tail} {quoted} 2>&1\nif ($LASTEXITCODE -ne 0) {{ throw \"docker logs exit $LASTEXITCODE\" }}";
         var result = await _runner.ExecuteAsync(script, cancellationToken: cancellationToken).ConfigureAwait(false);
-        return result.Objects.FirstOrDefault()?.ToString() ?? string.Empty;
-    }
-
-    private static bool WasZeroExit(PSResult result)
-    {
-        if (!result.Success) return false;
-        var exit = result.Objects.LastOrDefault()?.BaseObject as int?;
-        return exit == 0;
+        if (!result.Success && result.Objects.Count == 0)
+        {
+            return string.Join(Environment.NewLine, result.Errors);
+        }
+        return string.Join(Environment.NewLine, result.Objects.Select(o => o?.ToString() ?? string.Empty));
     }
 
     private static string GetString(System.Text.Json.JsonElement el, string prop) =>
         el.TryGetProperty(prop, out var v) ? v.GetString() ?? string.Empty : string.Empty;
 
     /// <summary>
-    /// Quoted einen docker-Argument-String defensiv (nur a-z A-Z 0-9 _ -)
-    /// — Container-Namen sind genau aus diesem Alphabet, daher Pass-through.
+    /// Quoted einen docker-Argument-String defensiv (nur a-z A-Z 0-9 _ - .).
     /// </summary>
     private static string QuoteForDocker(string s)
     {
@@ -373,7 +391,6 @@ public sealed class ContainerService : IContainerService
             }
         }
 
-        // Container-Name muss Docker-konform sein.
         foreach (var c in req.ContainerName)
         {
             if (!char.IsLetterOrDigit(c) && c is not ('-' or '_'))

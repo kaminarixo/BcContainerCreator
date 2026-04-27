@@ -5,9 +5,9 @@ using Microsoft.Extensions.Logging;
 namespace BcContainerCreator.Core.Docker;
 
 /// <summary>
-/// PowerShell-basierte Docker-Steuerung. Vermeidet eine direkte
-/// Process.Start-Abhängigkeit, damit alles über den geteilten
-/// PowerShell-Runspace läuft (einheitliches Logging/Streaming).
+/// PowerShell-basierte Docker-Steuerung über den externen Runner.
+/// Skripte werfen explizit bei non-0-Exit, damit der Wrapper sie als
+/// PSResult.Success=false durchreicht.
 /// </summary>
 public sealed class DockerService : IDockerService
 {
@@ -22,9 +22,9 @@ public sealed class DockerService : IDockerService
 
     public async Task<bool> IsInstalledAsync(CancellationToken cancellationToken = default)
     {
-        // Get-Command wirft nicht, sondern liefert null → robust prüfbar.
+        // Get-Command wirft nicht, liefert null → robust prüfbar.
         var result = await _runner.ExecuteAsync(
-            "if (Get-Command docker -ErrorAction SilentlyContinue) { 'yes' } else { 'no' }",
+            "if (Get-Command docker -ErrorAction SilentlyContinue) { Write-Output 'yes' } else { Write-Output 'no' }",
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
         if (!result.Success)
@@ -38,30 +38,24 @@ public sealed class DockerService : IDockerService
     public async Task<bool> IsRunningAsync(CancellationToken cancellationToken = default)
     {
         // 'docker info' wirft non-zero, wenn der Daemon nicht erreichbar ist.
-        var result = await _runner.ExecuteAsync(
-            "$null = docker info 2>&1; $LASTEXITCODE",
-            cancellationToken: cancellationToken).ConfigureAwait(false);
-
-        if (!result.Success)
-        {
-            return false;
-        }
-
-        var exitCodeObj = result.Objects.LastOrDefault();
-        if (exitCodeObj?.BaseObject is int code)
-        {
-            return code == 0;
-        }
-        return false;
+        // Wrapper-Skript wertet $LASTEXITCODE aus und exited entsprechend.
+        const string script = """
+            $null = docker info 2>&1
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            """;
+        var result = await _runner.ExecuteAsync(script, cancellationToken: cancellationToken).ConfigureAwait(false);
+        return result.Success;
     }
 
     public async Task<ContainerMode> GetContainerModeAsync(CancellationToken cancellationToken = default)
     {
-        // 'docker info -f' liefert OSType: 'windows' oder 'linux'.
-        var result = await _runner.ExecuteAsync(
-            "(docker info --format '{{.OSType}}' 2>$null)",
-            cancellationToken: cancellationToken).ConfigureAwait(false);
-
+        // 'docker info -f' liefert OSType: 'windows' oder 'linux'. Eine Zeile stdout.
+        const string script = """
+            $os = docker info --format '{{.OSType}}' 2>$null
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            Write-Output $os
+            """;
+        var result = await _runner.ExecuteAsync(script, cancellationToken: cancellationToken).ConfigureAwait(false);
         if (!result.Success || result.Objects.Count == 0)
         {
             return ContainerMode.Unknown;
@@ -78,23 +72,17 @@ public sealed class DockerService : IDockerService
 
     public async Task<bool> SwitchToWindowsModeAsync(CancellationToken cancellationToken = default)
     {
-        // Standard-Pfad zu DockerCli.exe in Docker Desktop 4.x+.
-        // Phase-1-Heuristik: Wenn nicht vorhanden, abbrechen — kein Auto-Install.
         const string script = """
             $cli = 'C:\Program Files\Docker\Docker\DockerCli.exe'
             if (-not (Test-Path $cli)) { throw "DockerCli.exe nicht gefunden unter $cli" }
             & $cli -SwitchDaemon
-            $LASTEXITCODE
+            if ($LASTEXITCODE -ne 0) { throw "DockerCli -SwitchDaemon exit $LASTEXITCODE" }
             """;
-
         var result = await _runner.ExecuteAsync(script, cancellationToken: cancellationToken).ConfigureAwait(false);
         if (!result.Success)
         {
             _logger.LogError("SwitchToWindowsMode fehlgeschlagen: {Errors}", string.Join("; ", result.Errors));
-            return false;
         }
-
-        var exitCode = result.Objects.LastOrDefault()?.BaseObject as int?;
-        return exitCode == 0;
+        return result.Success;
     }
 }

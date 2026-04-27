@@ -30,7 +30,8 @@ public sealed class PreflightCheck : IPreflightCheck
         "docker-running",
         "docker-mode",
         "bccontainerhelper-installed",
-        "legacy-navcontainerhelper"
+        "legacy-navcontainerhelper",
+        "external-ps-smoketest"
     ];
 
     public PreflightCheck(IPowerShellRunner runner, IDockerService docker, ILogger<PreflightCheck> logger)
@@ -67,8 +68,57 @@ public sealed class PreflightCheck : IPreflightCheck
         await Run(CheckDockerModeAsync).ConfigureAwait(false);
         await Run(CheckBcContainerHelperAsync).ConfigureAwait(false);
         await Run(CheckLegacyNavContainerHelperAsync).ConfigureAwait(false);
+        await Run(CheckExternalPSSmokeAsync).ConfigureAwait(false);
 
         return results;
+    }
+
+    /// <summary>
+    /// Smoke-Test der externen Windows-PowerShell-Pipeline. Ruft im
+    /// powershell.exe-Subprozess die typischen BcContainerHelper-Voraussetzungen
+    /// ab — wenn das hier durchläuft, läuft auch New-BcContainer durch.
+    /// </summary>
+    private async Task<CheckResult> CheckExternalPSSmokeAsync(CancellationToken ct)
+    {
+        const string script = """
+            Write-Information ("PSVersion:        {0}" -f $PSVersionTable.PSVersion)
+            Write-Information ("Is64BitProcess:   {0}" -f [Environment]::Is64BitProcess)
+            Write-Information ("PSHOME:           {0}" -f $PSHOME)
+            Write-Information ("TEMP:             {0}" -f $env:TEMP)
+
+            $addType = Get-Command Add-Type -ErrorAction SilentlyContinue
+            if ($addType) {
+                Write-Information ("Add-Type:         {0}" -f $addType.Source)
+            } else {
+                throw 'Add-Type ist nicht verfuegbar.'
+            }
+
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            Write-Information 'System.IO.Compression.FileSystem geladen.'
+
+            Import-Module BcContainerHelper -Force -ErrorAction Stop
+            $bcch = (Get-Module BcContainerHelper).Version
+            Write-Information ("BcContainerHelper version: {0}" -f $bcch)
+
+            $url = Get-BcArtifactUrl -type Sandbox -country DE -select Latest -ErrorAction Stop
+            Write-Information ("Sandbox/DE/Latest: {0}" -f $url)
+            """;
+
+        var result = await _runner.ExecuteAsync(script, cancellationToken: ct).ConfigureAwait(false);
+        if (result.Success)
+        {
+            return new CheckResult(
+                Name: "Externe PowerShell + BcContainerHelper",
+                Status: CheckStatus.Ok,
+                Message: "powershell.exe-Smoketest läuft, BcContainerHelper lädt, Get-BcArtifactUrl erreichbar.");
+        }
+
+        var errorJoined = string.Join(" | ", result.Errors.Take(3));
+        return new CheckResult(
+            Name: "Externe PowerShell + BcContainerHelper",
+            Status: CheckStatus.Failed,
+            Message: $"Smoketest fehlgeschlagen (ExitCode {result.ExitCode}): {errorJoined}",
+            IsFixable: false);
     }
 
     private Task<CheckResult> CheckAdminAsync(CancellationToken _)

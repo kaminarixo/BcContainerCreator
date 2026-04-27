@@ -50,6 +50,12 @@ public class ContainerServiceTests
         script.Should().Contain("-containerName 'bcdev'");
         script.Should().Contain("-auth NavUserPassword");
         script.Should().Contain("-credential $cred");
+        // Username + Password kommen aus der externen Param-Datei ($Params),
+        // nicht als String-Interpolation ins Skript:
+        script.Should().Contain("$Params.Password");
+        script.Should().Contain("$Params.Username");
+        script.Should().NotContain("'admin'"); // Username sollte nicht hartcodiert sein
+        script.Should().NotContain("'P@ssw0rd'"); // Password schon gar nicht
         script.Should().Contain("-accept_eula");
         script.Should().Contain("-includeAL");
         script.Should().Contain("-updateHosts");
@@ -163,8 +169,12 @@ public class ContainerServiceTests
         runner.Calls.Should().HaveCount(1);
         var call = runner.Calls[0];
         call.Script.Should().NotContain("super-secret-pwd");
-        call.Variables.Should().ContainKey("bcPassword");
-        call.Variables!["bcPassword"].Should().BeOfType<SecureString>();
+        // Username + Password gehen über die JSON-Param-Datei des externen Runners
+        // (Schlüssel müssen zu $Params.Username / $Params.Password im Skript passen).
+        call.Variables.Should().ContainKey("Password");
+        call.Variables!["Password"].Should().BeOfType<SecureString>();
+        call.Variables.Should().ContainKey("Username");
+        call.Variables!["Username"].Should().Be("admin");
     }
 
     [Fact]

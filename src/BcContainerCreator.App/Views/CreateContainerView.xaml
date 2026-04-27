@@ -167,11 +167,11 @@
                 </Grid>
             </Border>
 
-            <!-- Working-Overlay: halb-transparent, drehendes Logo, Cancel-Button -->
+            <!-- Working-Overlay: halb-transparent, drehendes Logo, ProgressBar, Status-Text, Cancel-Button -->
             <Border Background="#CC101010"
                     CornerRadius="{StaticResource CardCorner}"
                     Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}">
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Width="420">
                     <Image Source="pack://application:,,,/Assets/logo.png"
                            Width="96" Height="96"
                            RenderOptions.BitmapScalingMode="HighQuality"
@@ -201,7 +201,37 @@
                     <TextBlock Text="Erster Start lädt das BC-Image (~10–15 GB) — kann mehrere Minuten dauern."
                                Foreground="#BFBFBF"
                                FontSize="12"
-                               HorizontalAlignment="Center" />
+                               HorizontalAlignment="Center"
+                               TextWrapping="Wrap"
+                               TextAlignment="Center" />
+
+                    <!-- Stufenbasierte Fortschritts-Anzeige (kein präzise Prozent-API hinter New-BcContainer) -->
+                    <ProgressBar Margin="0,18,0,0"
+                                 Height="10"
+                                 Minimum="0" Maximum="100"
+                                 Value="{Binding CreateProgressPercent, Mode=OneWay}"
+                                 IsIndeterminate="{Binding IsCreateProgressIndeterminate}"
+                                 Foreground="{StaticResource BrandRed}"
+                                 Background="#262626"
+                                 BorderThickness="0" />
+                    <Grid Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   Text="{Binding CreateProgressText}"
+                                   Foreground="#DDDDDD"
+                                   FontSize="12" />
+                        <TextBlock Grid.Column="1"
+                                   Foreground="#BFBFBF"
+                                   FontSize="12"
+                                   FontFamily="{StaticResource MonoFont}">
+                            <Run Text="{Binding CreateProgressPercent, Mode=OneWay}" />
+                            <Run Text=" %" />
+                        </TextBlock>
+                    </Grid>
+
                     <Button Content="Abbrechen"
                             Margin="0,22,0,0"
                             HorizontalAlignment="Center"

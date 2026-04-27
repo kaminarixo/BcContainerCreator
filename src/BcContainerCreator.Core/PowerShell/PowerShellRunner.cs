@@ -1,22 +1,35 @@
 using System.Diagnostics;
+using System.IO;
 using System.Management.Automation;
-using System.Management.Automation.Runspaces;
+using System.Runtime.InteropServices;
+using System.Security;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
 namespace BcContainerCreator.Core.PowerShell;
 
 /// <summary>
-/// PowerShell-Runner mit persistentem Runspace. Threadsicher (serialisiert
-/// Aufrufe über ein <see cref="SemaphoreSlim"/>, weil ein Runspace nicht
-/// parallel von mehreren Pipelines benutzt werden darf).
+/// Externer PowerShell-Runner. Führt jedes Skript in einem frischen
+/// <c>powershell.exe</c>-Prozess (Windows PowerShell 5.1) aus statt im
+/// In-Process-SDK-Runspace — letzteres lieferte unter BcContainerHelper
+/// "The type initializer for 'AddTypeCommand' threw an exception", weil
+/// die SDK-Embed-Engine an einigen .NET-Reflection-Stellen anders tickt
+/// als eine echte powershell.exe.
+/// <para>
+/// stdout / stderr werden zeilenweise asynchron gelesen, in <see cref="ILogger"/>
+/// und über <see cref="OutputReceived"/> an die UI gestreamt. Variablen werden
+/// als ACL-geschützte JSON-Datei (User-Temp) übergeben — nie via Prozessargument
+/// und nie als Plain-Text in Logs.
+/// </para>
 /// </summary>
 public sealed class PowerShellRunner : IPowerShellRunner
 {
+    private const string PowerShellExe = @"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe";
+
     private readonly ILogger<PowerShellRunner> _logger;
-    private readonly SemaphoreSlim _gate = new(1, 1);
-    private Runspace? _runspace;
-    private bool _disposed;
 
     public event EventHandler<PowerShellOutputEventArgs>? OutputReceived;
 
@@ -25,50 +38,7 @@ public sealed class PowerShellRunner : IPowerShellRunner
         _logger = logger;
     }
 
-    public async Task InitializeAsync(CancellationToken cancellationToken = default)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_runspace is { RunspaceStateInfo.State: RunspaceState.Opened })
-        {
-            return;
-        }
-
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            if (_runspace is { RunspaceStateInfo.State: RunspaceState.Opened })
-            {
-                return;
-            }
-
-            _logger.LogInformation("Initialisiere PowerShell-Runspace");
-
-            // Microsoft.PowerShell.SDK liefert die Core-Module als loose Files
-            // unter <exe>/runtimes/win/lib/net10.0/Modules — ohne expliziten
-            // Eintrag im PSModulePath findet der Engine sie nicht und alle
-            // Microsoft.PowerShell.{Security,Utility,Management}-Cmdlets fallen
-            // (inkl. Set-ExecutionPolicy, Sort-Object, Join-Path, Invoke-WebRequest).
-            // Muss VOR Runspace-Open gesetzt werden, weil Set-Item / Set-Variable
-            // selbst aus Microsoft.PowerShell.Management kommen würden (Henne-Ei).
-            EnsureSdkModulesOnProcessPath();
-
-            // CreateDefault2 ist deutlich schlanker (lädt nur Microsoft.PowerShell.Core)
-            // und damit ~10x schneller im Open() als CreateDefault.
-            var iss = InitialSessionState.CreateDefault2();
-            // ExecutionPolicy für diesen Runspace; greift nicht systemweit.
-            iss.ExecutionPolicy = Microsoft.PowerShell.ExecutionPolicy.Bypass;
-
-            var rs = RunspaceFactory.CreateRunspace(iss);
-            rs.Open();
-            _runspace = rs;
-
-            _logger.LogInformation("PowerShell-Runspace bereit (PSVersion: {Version})", rs.Version);
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
+    public Task InitializeAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     public async Task<PSResult> ExecuteAsync(
         string script,
@@ -76,196 +46,287 @@ public sealed class PowerShellRunner : IPowerShellRunner
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(script);
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        await InitializeAsync(cancellationToken).ConfigureAwait(false);
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
 
         var stopwatch = Stopwatch.StartNew();
-        var errors = new List<string>();
+        var stdoutLines = new List<string>();
+        var stderrLines = new List<string>();
         var wasCancelled = false;
+
+        string? paramFilePath = null;
+        string? scriptFilePath = null;
 
         try
         {
-            using var ps = System.Management.Automation.PowerShell.Create();
-            ps.Runspace = _runspace!;
-
-            // Variablen setzen, bevor das Skript läuft.
-            if (variables is not null)
+            if (variables is { Count: > 0 })
             {
-                foreach (var kvp in variables)
-                {
-                    _runspace!.SessionStateProxy.SetVariable(kvp.Key, kvp.Value);
-                }
+                paramFilePath = WriteParamFile(variables);
+            }
+            scriptFilePath = WriteScriptFile(script);
+
+            using var process = new Process();
+            process.StartInfo.FileName = PowerShellExe;
+            process.StartInfo.Arguments =
+                "-NoProfile -NonInteractive -ExecutionPolicy Bypass " +
+                $"-File \"{scriptFilePath}\"";
+            process.StartInfo.UseShellExecute = false;
+            process.StartInfo.CreateNoWindow = true;
+            process.StartInfo.RedirectStandardOutput = true;
+            process.StartInfo.RedirectStandardError = true;
+            process.StartInfo.StandardOutputEncoding = Encoding.UTF8;
+            process.StartInfo.StandardErrorEncoding = Encoding.UTF8;
+
+            // Param-Pfad NICHT als Argument — via Environment-Variable, damit der
+            // Pfad nicht im Task-Manager / Event-Logs sichtbar wird.
+            if (paramFilePath is not null)
+            {
+                process.StartInfo.EnvironmentVariables["BCC_PARAM_FILE"] = paramFilePath;
             }
 
-            // Stream-Subscriptions: Information, Warning, Error, Verbose, Debug, Progress.
-            ps.Streams.Information.DataAdded += (_, e) =>
-                OnOutput(PSStreamType.Information, ps.Streams.Information[e.Index]?.MessageData?.ToString() ?? string.Empty);
-            ps.Streams.Warning.DataAdded += (_, e) =>
-                OnOutput(PSStreamType.Warning, ps.Streams.Warning[e.Index]?.Message ?? string.Empty);
-            ps.Streams.Error.DataAdded += (_, e) =>
+            process.OutputDataReceived += (_, e) =>
             {
-                var rec = ps.Streams.Error[e.Index];
-                var msg = FormatError(rec);
-                errors.Add(msg);
-                OnOutput(PSStreamType.Error, msg);
+                if (e.Data is null) return;
+                stdoutLines.Add(e.Data);
+                _logger.LogInformation("PS[stdout] {Line}", e.Data);
+                RaiseOutput(PSStreamType.Information, e.Data);
             };
-            ps.Streams.Verbose.DataAdded += (_, e) =>
-                OnOutput(PSStreamType.Verbose, ps.Streams.Verbose[e.Index]?.Message ?? string.Empty);
-            ps.Streams.Debug.DataAdded += (_, e) =>
-                OnOutput(PSStreamType.Debug, ps.Streams.Debug[e.Index]?.Message ?? string.Empty);
-            ps.Streams.Progress.DataAdded += (_, e) =>
+            process.ErrorDataReceived += (_, e) =>
             {
-                var p = ps.Streams.Progress[e.Index];
-                OnOutput(PSStreamType.Progress, $"{p.Activity}: {p.StatusDescription} ({p.PercentComplete}%)");
+                if (e.Data is null) return;
+                stderrLines.Add(e.Data);
+                _logger.LogError("PS[stderr] {Line}", e.Data);
+                RaiseOutput(PSStreamType.Error, e.Data);
             };
 
-            ps.AddScript(script);
+            if (!process.Start())
+            {
+                throw new InvalidOperationException("powershell.exe konnte nicht gestartet werden.");
+            }
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
 
-            // Cancellation registrieren — BeginStop ist non-blocking.
             using var reg = cancellationToken.Register(() =>
             {
                 wasCancelled = true;
-                try { ps.BeginStop(null, null); }
-                catch (Exception ex) { _logger.LogWarning(ex, "BeginStop fehlgeschlagen"); }
+                try
+                {
+                    if (!process.HasExited)
+                    {
+                        // entireProcessTree:true — auch Sub-Prozesse von BcContainerHelper.
+                        process.Kill(entireProcessTree: true);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Process.Kill bei Cancellation fehlgeschlagen");
+                }
             });
-
-            var input = new PSDataCollection<PSObject>();
-            input.Complete();
-            var output = new PSDataCollection<PSObject>();
-
-            // Async-Ausführung über Begin/End-Pattern, in Task gewrappt.
-            var psTask = Task.Factory.FromAsync(
-                ps.BeginInvoke(input, output),
-                ps.EndInvoke);
 
             try
             {
-                await psTask.ConfigureAwait(false);
+                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
             }
-            catch (PipelineStoppedException) when (wasCancelled)
+            catch (Exception ex)
             {
-                // Vom CancellationToken erwartet.
+                _logger.LogWarning(ex, "WaitForExitAsync fehlgeschlagen");
             }
 
+            // Stream-Reader async-flushen.
+            process.WaitForExit();
+
             stopwatch.Stop();
-            var success = !wasCancelled && errors.Count == 0;
+            var exitCode = process.ExitCode;
+            var success = !wasCancelled && exitCode == 0;
+
+            // stdout-Zeilen als PSObject-Wrapper, damit Aufrufer mit
+            // Objects.FirstOrDefault()?.ToString() weiter funktionieren.
+            var objects = stdoutLines.Select(l => new PSObject(l)).ToList();
+
             return new PSResult(
                 Success: success,
-                Objects: output.ToList(),
-                Errors: errors,
+                Objects: objects,
+                Errors: stderrLines.ToList(),
                 Duration: stopwatch.Elapsed,
-                WasCancelled: wasCancelled);
+                WasCancelled: wasCancelled,
+                ExitCode: exitCode);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!wasCancelled)
         {
             stopwatch.Stop();
             _logger.LogError(ex, "PowerShell-Ausführung fehlgeschlagen");
-            errors.Add(ex.Message);
-            return new PSResult(false, Array.Empty<PSObject>(), errors, stopwatch.Elapsed, wasCancelled);
+            stderrLines.Add(ex.Message);
+            return new PSResult(false, Array.Empty<PSObject>(), stderrLines, stopwatch.Elapsed, wasCancelled, -1);
         }
         finally
         {
-            _gate.Release();
+            // Param-File ZUERST löschen (enthält ggf. Klartext-Passwort).
+            if (paramFilePath is not null)
+            {
+                TryDelete(paramFilePath);
+            }
+            if (scriptFilePath is not null)
+            {
+                TryDelete(scriptFilePath);
+            }
         }
     }
 
-    /// <summary>
-    /// Hängt den SDK-eigenen Modules-Pfad ganz vorne in <c>$env:PSModulePath</c>
-    /// des Runspace ein. Sucht relativ zur .exe nach <c>runtimes/win/lib/netX.0/Modules</c>
-    /// — bei Single-File-Publish landet das im publish-Ordner als loose Files.
-    /// </summary>
-    private void EnsureSdkModulesOnProcessPath()
+    private string WriteScriptFile(string userScript)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"bcc-{Guid.NewGuid():N}.ps1");
+
+        var prefix = """
+            $ErrorActionPreference = 'Stop'
+            $InformationPreference = 'Continue'
+            $WarningPreference = 'Continue'
+            $VerbosePreference = 'Continue'
+            $ProgressPreference = 'SilentlyContinue'
+            try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}
+
+            $Params = $null
+            if ($env:BCC_PARAM_FILE -and (Test-Path -LiteralPath $env:BCC_PARAM_FILE)) {
+                try {
+                    $Params = Get-Content -LiteralPath $env:BCC_PARAM_FILE -Raw | ConvertFrom-Json
+                } catch {
+                    Write-Warning "Konnte Parameter-Datei nicht laden: $($_.Exception.Message)"
+                }
+            }
+
+            try {
+            """;
+
+        var suffix = """
+            } catch {
+                $err = $_
+                Write-Host '--- FEHLER ---'
+                Write-Host ("  Type:    {0}" -f $err.Exception.GetType().FullName)
+                Write-Host ("  Message: {0}" -f $err.Exception.Message)
+                $inner = $err.Exception.InnerException
+                while ($inner) {
+                    Write-Host ("  Inner:   {0}: {1}" -f $inner.GetType().FullName, $inner.Message)
+                    $inner = $inner.InnerException
+                }
+                if ($err.ScriptStackTrace) {
+                    Write-Host ("  Stack:   {0}" -f $err.ScriptStackTrace)
+                }
+                if ($err.InvocationInfo -and $err.InvocationInfo.PositionMessage) {
+                    Write-Host ("  Pos:     {0}" -f $err.InvocationInfo.PositionMessage)
+                }
+                # Auch in stderr — landet so in PSResult.Errors.
+                [Console]::Error.WriteLine($err.Exception.Message)
+                exit 1
+            }
+            exit 0
+            """;
+
+        var wrapped = prefix + Environment.NewLine + userScript + Environment.NewLine + suffix;
+        File.WriteAllText(path, wrapped, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        return path;
+    }
+
+    private string WriteParamFile(IDictionary<string, object?> variables)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"bcc-params-{Guid.NewGuid():N}.json");
+
+        var serializable = new Dictionary<string, object?>(StringComparer.Ordinal);
+        var sensitiveKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kvp in variables)
+        {
+            if (kvp.Value is SecureString ss)
+            {
+                serializable[kvp.Key] = SecureStringToPlain(ss);
+                sensitiveKeys.Add(kvp.Key);
+            }
+            else
+            {
+                serializable[kvp.Key] = kvp.Value;
+            }
+        }
+
+        var json = JsonSerializer.Serialize(serializable);
+        File.WriteAllText(path, json, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+        TryRestrictAclToCurrentUser(path);
+
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            var summary = string.Join(", ", variables.Keys.Select(k =>
+                sensitiveKeys.Contains(k) ? $"{k}=<redacted>" : $"{k}={Truncate(variables[k]?.ToString())}"));
+            _logger.LogDebug("PS-Parameter geschrieben: {Summary}", summary);
+        }
+
+        return path;
+    }
+
+    private void TryRestrictAclToCurrentUser(string path)
     {
         try
         {
-            // Mehrere Kandidaten — abhängig davon, wie die App gestartet wurde:
-            //   * Direkt-Start der .exe → Environment.ProcessPath ist korrekt
-            //   * Via 'dotnet xxx.dll'  → ProcessPath zeigt auf dotnet.exe;
-            //     AppContext.BaseDirectory zeigt aufs DLL-Verzeichnis
-            //   * Single-File self-extract → AppContext.BaseDirectory ist Extract-Pfad
-            var candidates = new List<string>();
-            if (!string.IsNullOrEmpty(Environment.ProcessPath))
+            var fi = new FileInfo(path);
+            var acl = fi.GetAccessControl();
+            acl.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+
+            var rules = acl.GetAccessRules(true, false, typeof(SecurityIdentifier));
+            foreach (FileSystemAccessRule rule in rules)
             {
-                candidates.Add(Path.GetDirectoryName(Environment.ProcessPath)!);
-            }
-            // AppContext.BaseDirectory ist single-file-safe (Assembly.Location
-            // ist es nicht — IL3000). Bei dotnet-host-Start zeigt es aufs
-            // DLL-Verzeichnis, bei direkt gestarteter .exe auf den Extract-Pfad.
-            candidates.Add(AppContext.BaseDirectory);
-
-            string? sdkModules = null;
-            string? checkedRoot = null;
-            foreach (var dir in candidates.Distinct())
-            {
-                checkedRoot = dir;
-                var runtimesDir = Path.Combine(dir, "runtimes", "win", "lib");
-                if (!Directory.Exists(runtimesDir))
-                {
-                    continue;
-                }
-
-                sdkModules = Directory.EnumerateDirectories(runtimesDir, "net*")
-                    .Select(d => Path.Combine(d, "Modules"))
-                    .FirstOrDefault(Directory.Exists);
-
-                if (sdkModules is not null)
-                {
-                    break;
-                }
+                acl.RemoveAccessRule(rule);
             }
 
-            if (sdkModules is null)
+            using var identity = WindowsIdentity.GetCurrent();
+            if (identity.User is not null)
             {
-                _logger.LogWarning("SDK-Modules-Pfad nicht gefunden (zuletzt geprüft: {Path}) — Cmdlet-Auflösung fällt auf System-PowerShell zurück.", checkedRoot);
-                return;
+                acl.AddAccessRule(new FileSystemAccessRule(
+                    identity.User,
+                    FileSystemRights.FullControl,
+                    AccessControlType.Allow));
             }
 
-            // Direkt am Process — kein PowerShell-Cmdlet, weil die fehlen ja gerade.
-            var current = Environment.GetEnvironmentVariable("PSModulePath") ?? string.Empty;
-            // Idempotent: nur prependen, wenn nicht schon drin.
-            var segments = current.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
-            if (segments.Any(s => string.Equals(s.TrimEnd('\\', '/'), sdkModules.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase)))
-            {
-                _logger.LogDebug("SDK-Modules-Pfad bereits im PSModulePath: {Path}", sdkModules);
-                return;
-            }
-
-            var newPath = string.IsNullOrEmpty(current)
-                ? sdkModules
-                : $"{sdkModules}{Path.PathSeparator}{current}";
-            Environment.SetEnvironmentVariable("PSModulePath", newPath);
-
-            _logger.LogInformation("SDK-Modules-Pfad vorangestellt: {Path}", sdkModules);
+            fi.SetAccessControl(acl);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "EnsureSdkModulesOnProcessPath fehlgeschlagen");
+            // User-Temp ist per default User-only, daher nicht fatal.
+            _logger.LogWarning(ex, "ACL-Restriktion auf Param-File fehlgeschlagen — fällt auf NTFS-Default zurück");
         }
     }
 
-    private void OnOutput(PSStreamType type, string message)
+    private static string SecureStringToPlain(SecureString ss)
     {
-        if (string.IsNullOrEmpty(message))
+        if (ss.Length == 0) return string.Empty;
+        IntPtr bstr = IntPtr.Zero;
+        try
         {
-            return;
+            bstr = Marshal.SecureStringToBSTR(ss);
+            return Marshal.PtrToStringBSTR(bstr) ?? string.Empty;
         }
-
-        // Auch nach Serilog spiegeln, damit man bei Hängern im Log sieht,
-        // wo das Skript steht.
-        var level = type switch
+        finally
         {
-            PSStreamType.Error => LogLevel.Error,
-            PSStreamType.Warning => LogLevel.Warning,
-            PSStreamType.Information => LogLevel.Information,
-            PSStreamType.Verbose => LogLevel.Debug,
-            PSStreamType.Debug => LogLevel.Debug,
-            PSStreamType.Progress => LogLevel.Debug,
-            _ => LogLevel.Trace
-        };
-        _logger.Log(level, "PS[{Stream}] {Message}", type, message);
+            if (bstr != IntPtr.Zero)
+            {
+                Marshal.ZeroFreeBSTR(bstr);
+            }
+        }
+    }
 
+    private static string? Truncate(string? value) =>
+        value is null ? null
+        : value.Length <= 60 ? value
+        : value[..57] + "...";
+
+    private void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Konnte Temp-Datei nicht löschen: {Path}", path);
+        }
+    }
+
+    private void RaiseOutput(PSStreamType type, string message)
+    {
+        if (string.IsNullOrEmpty(message)) return;
         try
         {
             OutputReceived?.Invoke(this, new PowerShellOutputEventArgs(type, message));
@@ -276,39 +337,5 @@ public sealed class PowerShellRunner : IPowerShellRunner
         }
     }
 
-    private static string FormatError(ErrorRecord record)
-    {
-        var sb = new StringBuilder();
-        sb.Append(record.Exception?.Message ?? record.ToString());
-        if (record.InvocationInfo is { } info && !string.IsNullOrWhiteSpace(info.PositionMessage))
-        {
-            sb.Append(' ');
-            sb.Append(info.PositionMessage.Trim());
-        }
-        return sb.ToString();
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (_disposed)
-        {
-            return;
-        }
-        _disposed = true;
-        try
-        {
-            if (_runspace is not null)
-            {
-                _runspace.Close();
-                _runspace.Dispose();
-                _runspace = null;
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Fehler beim Schließen des Runspace");
-        }
-        _gate.Dispose();
-        await Task.CompletedTask.ConfigureAwait(false);
-    }
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

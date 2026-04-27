@@ -129,6 +129,24 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
     [ObservableProperty]
     private string _output = string.Empty;
 
+    // ----- Fortschritts-Properties -----
+
+    /// <summary>Aktueller Fortschritt 0..100. Monoton steigend während eines Runs.</summary>
+    [ObservableProperty]
+    private int _createProgressPercent;
+
+    /// <summary>Frei-Text-Status unter der ProgressBar (z. B. "Container wird erstellt").</summary>
+    [ObservableProperty]
+    private string _createProgressText = "Bereit";
+
+    /// <summary>True während IsRunning, drives die ProgressBar-Sichtbarkeit.</summary>
+    [ObservableProperty]
+    private bool _isCreateProgressVisible;
+
+    /// <summary>True solange noch keine Stage erkannt wurde — Marquee-Animation statt fester Wert.</summary>
+    [ObservableProperty]
+    private bool _isCreateProgressIndeterminate = true;
+
     public CreateContainerViewModel(
         IContainerService containerService,
         IDialogService dialogService,
@@ -220,6 +238,12 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
         IsRunning = true;
         Output = string.Empty;
 
+        // Fortschritt initialisieren — Marquee bis erste Stage erkannt wird.
+        CreateProgressPercent = 0;
+        CreateProgressText = "Vorbereitung …";
+        IsCreateProgressVisible = true;
+        IsCreateProgressIndeterminate = true;
+
         try
         {
             var isolation = string.Equals(SelectedIsolation, "(Standard)", StringComparison.OrdinalIgnoreCase)
@@ -242,24 +266,28 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
                 Isolation: isolation,
                 Multitenant: Multitenant);
 
-            var progress = new DispatcherProgress<string>(line =>
-            {
-                Output += line + Environment.NewLine;
-            });
+            var progress = new DispatcherProgress<string>(OnPsLine);
 
             var result = await _containerService.CreateContainerAsync(request, progress, _createCts.Token);
             if (result.WasCancelled)
             {
+                CreateProgressText = "Abgebrochen";
+                IsCreateProgressIndeterminate = false;
                 _dialogService.ShowMessage("Erstellung abgebrochen.", "Abgebrochen");
             }
             else if (result.Success)
             {
+                CreateProgressPercent = 100;
+                CreateProgressText = "Fertig";
+                IsCreateProgressIndeterminate = false;
                 _dialogService.ShowMessage(
                     $"Container '{ContainerName}' erstellt.\nDauer: {result.Duration:mm\\:ss}",
                     "Erfolg");
             }
             else
             {
+                CreateProgressText = "Fehlgeschlagen";
+                IsCreateProgressIndeterminate = false;
                 _dialogService.ShowMessage(
                     "Erstellung fehlgeschlagen:\n\n" + string.Join("\n", result.Errors),
                     "Fehler",
@@ -268,12 +296,38 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
         }
         catch (Exception ex)
         {
+            CreateProgressText = "Fehlgeschlagen";
+            IsCreateProgressIndeterminate = false;
             _logger.LogError(ex, "Create-Container geworfen");
             _dialogService.ShowMessage(ex.Message, "Fehler", isError: true);
         }
         finally
         {
             IsRunning = false;
+            // Sichtbar lassen, falls fertig auf 100% — User soll Endstand sehen.
+            // Beim nächsten Run wird IsCreateProgressVisible neu auf true gesetzt.
+        }
+    }
+
+    /// <summary>
+    /// Wird für jede stdout/stderr-Zeile aus dem externen powershell.exe
+    /// aufgerufen. Hängt sie ans Output-Feld an UND aktualisiert die
+    /// Fortschritts-Stage (monoton steigend).
+    /// </summary>
+    private void OnPsLine(string line)
+    {
+        Output += line + Environment.NewLine;
+
+        var stage = ContainerCreateProgressMapper.Match(line);
+        if (stage is null) return;
+
+        // Erste erkannte Stage beendet die Marquee-Phase.
+        IsCreateProgressIndeterminate = false;
+
+        if (stage.Percent > CreateProgressPercent)
+        {
+            CreateProgressPercent = stage.Percent;
+            CreateProgressText = stage.Text;
         }
     }
 
