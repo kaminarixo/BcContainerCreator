@@ -240,7 +240,8 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
         Output = string.Empty;
 
         // Fortschritt initialisieren — Marquee bis erste Stage erkannt wird.
-        // Sichtbarkeit ist an IsRunning gekoppelt (Overlay-Visibility in der View).
+        // Die Progress-Sektion sitzt dauerhaft in der Live-Output-Card (rechts);
+        // Idle/Run wird über IsCreateProgressIndeterminate + CreateProgressPercent gesteuert.
         CreateProgressPercent = 0;
         CreateProgressText = "Vorbereitung …";
         IsCreateProgressIndeterminate = true;
@@ -305,9 +306,9 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
         finally
         {
             IsRunning = false;
-            // Overlay verschwindet automatisch (an IsRunning gebunden). Der finale
-            // Status (Fertig / Fehlgeschlagen / Abgebrochen) wurde vorher gesetzt
-            // und ist im Erfolgs-/Fehler-Dialog sichtbar.
+            // Der finale Status (Fertig / Fehlgeschlagen / Abgebrochen) wurde vorher
+            // gesetzt und bleibt in der Progress-Sektion sichtbar; der Erfolgs-/Fehler-
+            // Dialog hat den Run zusätzlich quittiert.
         }
     }
 

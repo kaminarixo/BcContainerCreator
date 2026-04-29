@@ -139,17 +139,31 @@ public sealed class PreflightCheck : IPreflightCheck
     {
         // EditionID kommt aus der Registry und ist deterministischer als
         // Get-CimInstance Win32_OperatingSystem.Caption (lokalisiert).
+        // ACHTUNG: ProductName liefert auf Windows 11 aus Kompatibilitätsgründen
+        // immer noch "Windows 10 …". Korrekte 10-vs-11-Unterscheidung geht nur
+        // über CurrentBuild (>= 22000 → Windows 11).
         const string script = """
             $key = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
-            $edition  = (Get-ItemProperty -Path $key -ErrorAction SilentlyContinue).EditionID
-            $product  = (Get-ItemProperty -Path $key -ErrorAction SilentlyContinue).ProductName
-            "$edition|$product"
+            $props    = Get-ItemProperty -Path $key -ErrorAction SilentlyContinue
+            $edition  = $props.EditionID
+            $product  = $props.ProductName
+            $build    = $props.CurrentBuildNumber
+            "$edition|$product|$build"
             """;
         var result = await _runner.ExecuteAsync(script, cancellationToken: ct).ConfigureAwait(false);
         var raw = result.Objects.FirstOrDefault()?.ToString() ?? string.Empty;
-        var parts = raw.Split('|', 2);
+        var parts = raw.Split('|', 3);
         var edition = parts.Length > 0 ? parts[0] : string.Empty;
         var product = parts.Length > 1 ? parts[1] : string.Empty;
+        var buildStr = parts.Length > 2 ? parts[2] : string.Empty;
+
+        // Windows-11-Patch: ProductName ist registry-mäßig auf "Windows 10 …"
+        // eingefroren — bei Build >= 22000 zeigen wir "Windows 11 …" an.
+        if (int.TryParse(buildStr, out var build) && build >= 22000
+            && product.Contains("Windows 10", StringComparison.OrdinalIgnoreCase))
+        {
+            product = product.Replace("Windows 10", "Windows 11", StringComparison.OrdinalIgnoreCase);
+        }
 
         // Pro / Enterprise / Education / ServerStandard etc. = Hyper-V verfügbar
         // → echte Windows-Container möglich.

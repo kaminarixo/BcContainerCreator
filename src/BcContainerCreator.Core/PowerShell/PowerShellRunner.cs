@@ -55,9 +55,26 @@ public sealed class PowerShellRunner : IPowerShellRunner
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(script);
 
-        // Serialisierung: nur ein externes Skript gleichzeitig, damit
-        // OutputReceived-Zeilen sich nicht zwischen Aufrufern vermischen.
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        // Cancellation BEVOR wir am Gate warten oder darin hängen liefert ein
+        // PSResult mit WasCancelled=true zurück — konsistent mit der Cancel-
+        // Semantik während eines Runs (siehe Process.Kill-Pfad weiter unten).
+        // Sonst würde dieselbe API zwei verschiedene Fehlertypen liefern, je
+        // nachdem ob der Token vorher oder erst während des Skripts gecancelt
+        // wurde.
+        try
+        {
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return new PSResult(
+                Success: false,
+                Objects: Array.Empty<PSObject>(),
+                Errors: new[] { "Abgebrochen vor PowerShell-Start." },
+                Duration: TimeSpan.Zero,
+                WasCancelled: true,
+                ExitCode: -1);
+        }
 
         var stopwatch = Stopwatch.StartNew();
         var stdoutLines = new List<string>();
