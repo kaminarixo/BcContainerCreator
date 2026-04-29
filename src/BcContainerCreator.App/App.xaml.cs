@@ -165,7 +165,7 @@ public partial class App : Application
     {
         try
         {
-            // PowerShell-Runspace sauber schließen.
+            // PowerShell-Runner sauber abräumen — Temp-Param-Files etc.
             if (_host is not null)
             {
                 var runner = _host.Services.GetService<IPowerShellRunner>();

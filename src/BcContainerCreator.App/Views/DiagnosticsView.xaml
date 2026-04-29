@@ -157,7 +157,7 @@
                                             Style="{StaticResource SmallPrimaryButton}"
                                             MinWidth="78"
                                             Visibility="{Binding IsFixable, Converter={StaticResource BoolToVis}}"
-                                            IsEnabled="{Binding IsFixing, Converter={StaticResource BoolToVis}, ConverterParameter=invert}"
+                                            IsEnabled="{Binding IsFixing, Converter={StaticResource InverseBool}}"
                                             Command="{Binding DataContext.FixCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}" />
                                 </StackPanel>

@@ -165,7 +165,7 @@
                                                 Style="{StaticResource SmallGhostButton}"
                                                 Content="Aktualisieren"
                                                 Command="{Binding ReloadVersionsCommand}"
-                                                IsEnabled="{Binding IsLoadingVersions, Converter={StaticResource BoolToVis}, ConverterParameter=invert}" />
+                                                IsEnabled="{Binding IsLoadingVersions, Converter={StaticResource InverseBool}}" />
                                     </Grid>
                                     <ComboBox ItemsSource="{Binding AvailableVersions}"
                                               SelectedItem="{Binding SelectedVersion}"
@@ -471,17 +471,8 @@
                                 BorderThickness="0,0,0,1"
                                 MinHeight="240">
                             <TextBox x:Name="OutputBox"
+                                     Style="{StaticResource ConsoleTextBox}"
                                      Text="{Binding Output, Mode=OneWay}"
-                                     IsReadOnly="True"
-                                     Background="Transparent"
-                                     Foreground="{StaticResource TextSecondary}"
-                                     BorderThickness="0"
-                                     Padding="16,12"
-                                     FontFamily="{StaticResource MonoFont}"
-                                     FontSize="12"
-                                     VerticalScrollBarVisibility="Auto"
-                                     HorizontalScrollBarVisibility="Auto"
-                                     TextWrapping="NoWrap"
                                      TextChanged="OutputBox_TextChanged" />
                         </Border>
 

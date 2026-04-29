@@ -303,7 +303,7 @@
                                                 Style="{StaticResource SmallButton}"
                                                 Margin="0,0,6,0"
                                                 Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}"
-                                                IsEnabled="{Binding WebClientUrl, Converter={StaticResource BoolToVis}}"
+                                                IsEnabled="{Binding WebClientUrl, Converter={StaticResource NotEmptyToBool}}"
                                                 Command="{Binding DataContext.OpenUrlCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}"
                                                 ToolTip="{Binding WebClientUrl}" />

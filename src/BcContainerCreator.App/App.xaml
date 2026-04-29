@@ -12,6 +12,8 @@
             <conv:CheckStatusToBrushConverter x:Key="StatusToBrush" />
             <conv:CheckStatusToIconConverter x:Key="StatusToIcon" />
             <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
+            <conv:InverseBooleanConverter x:Key="InverseBool" />
+            <conv:NullOrEmptyToBoolConverter x:Key="NotEmptyToBool" />
             <conv:LogLevelToBrushConverter x:Key="LevelToBrush" />
             <conv:IntEqualsConverter x:Key="IntEquals" />
             <conv:EqualsConverter x:Key="Equals" />
@@ -222,10 +224,10 @@
                                     SnapsToDevicePixels="True">
                                 <ScrollViewer x:Name="PART_ContentHost"
                                               Padding="{TemplateBinding Padding}"
-                                              VerticalAlignment="Center"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
                                               Focusable="False"
-                                              HorizontalScrollBarVisibility="Hidden"
-                                              VerticalScrollBarVisibility="Hidden" />
+                                              HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
+                                              VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}" />
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsKeyboardFocusWithin" Value="True">
@@ -251,6 +253,46 @@
             <Style x:Key="MonoTextBox" TargetType="{x:Type TextBox}" BasedOn="{StaticResource {x:Type TextBox}}">
                 <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
                 <Setter Property="FontSize" Value="12" />
+            </Style>
+
+            <!-- Konsolen-TextBox für Live-Output: Top-Alignment, Auto-Scrollbars,
+                 monospaced. Eigenes Template, weil Standard-TextBox-Template
+                 zentriert und Scrollbars hart auf Hidden setzt. -->
+            <Style x:Key="ConsoleTextBox" TargetType="{x:Type TextBox}">
+                <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Padding" Value="16,12" />
+                <Setter Property="VerticalContentAlignment" Value="Top" />
+                <Setter Property="HorizontalContentAlignment" Value="Left" />
+                <Setter Property="IsReadOnly" Value="True" />
+                <Setter Property="IsReadOnlyCaretVisible" Value="False" />
+                <Setter Property="AcceptsReturn" Value="True" />
+                <Setter Property="TextWrapping" Value="NoWrap" />
+                <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto" />
+                <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+                <Setter Property="CaretBrush" Value="{StaticResource Brand}" />
+                <Setter Property="SelectionBrush" Value="{StaticResource BrandSoft}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="{x:Type TextBox}">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    SnapsToDevicePixels="True">
+                                <ScrollViewer x:Name="PART_ContentHost"
+                                              Padding="{TemplateBinding Padding}"
+                                              VerticalAlignment="Stretch"
+                                              HorizontalAlignment="Stretch"
+                                              Focusable="False"
+                                              HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
+                                              VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
 
             <Style TargetType="{x:Type PasswordBox}">
@@ -362,7 +404,13 @@
                                          Margin="{TemplateBinding Padding}"
                                          Background="Transparent"
                                          BorderThickness="0"
-                                         VerticalAlignment="Center" />
+                                         Foreground="{TemplateBinding Foreground}"
+                                         CaretBrush="{StaticResource Brand}"
+                                         SelectionBrush="{StaticResource BrandSoft}"
+                                         FontFamily="{TemplateBinding FontFamily}"
+                                         FontSize="{TemplateBinding FontSize}"
+                                         VerticalAlignment="Center"
+                                         HorizontalAlignment="Stretch" />
                                 <Popup x:Name="Popup"
                                        Placement="Bottom"
                                        IsOpen="{TemplateBinding IsDropDownOpen}"

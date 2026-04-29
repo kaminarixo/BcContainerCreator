@@ -4,7 +4,7 @@
 ; ===========================================================================
 
 #define MyAppName        "BC Container Creator"
-#define MyAppVersion     "1.0.0"
+#define MyAppVersion     "1.0.1"
 #define MyAppPublisher   "Thomas Scharf"
 #define MyAppURL         "https://github.com/kaminarixo/BcContainerCreator"
 #define MyAppExeName     "BcContainerCreator.exe"

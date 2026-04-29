@@ -139,9 +139,14 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
     [ObservableProperty]
     private string _createProgressText = "Bereit";
 
-    /// <summary>True solange noch keine Stage erkannt wurde — Marquee-Animation statt fester Wert.</summary>
+    /// <summary>
+    /// True solange noch keine Stage erkannt wurde — dann läuft die Marquee-
+    /// Animation. Default ist false, damit die ProgressBar im Idle still steht;
+    /// wird beim Start eines Runs auf true gesetzt und beim Erkennen der ersten
+    /// Stage bzw. beim Run-Ende wieder zurückgenommen.
+    /// </summary>
     [ObservableProperty]
-    private bool _isCreateProgressIndeterminate = true;
+    private bool _isCreateProgressIndeterminate;
 
     public CreateContainerViewModel(
         IContainerService containerService,

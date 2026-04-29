@@ -40,7 +40,7 @@ public partial class MainWindow : Window
             }
 
             // User hat Schließen bestätigt — Cancel-Token feuern, damit der
-            // PowerShell-Runspace sauber abgeräumt wird.
+            // externe powershell.exe-Subprozess sauber abgeräumt wird.
             if (vm.CreateContainer.CancelCommand.CanExecute(null))
             {
                 vm.CreateContainer.CancelCommand.Execute(null);
