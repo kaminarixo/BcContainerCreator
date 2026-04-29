@@ -211,4 +211,80 @@ public class ContainerServiceTests
         var act = async () => await sut.CreateContainerAsync(req);
         await act.Should().ThrowAsync<ArgumentException>();
     }
+
+    [Fact]
+    public void BuildCreateScript_FinalWriteInformation_IsCleanlyQuoted()
+    {
+        var sut = CreateSut(out _);
+        var req = new ContainerCreateRequest(
+            "bcdev", ArtifactType.OnPrem, "DE", "latest",
+            AuthType.NavUserPassword, "admin", MakeSecureString("x"));
+
+        var script = sut.BuildCreateScript(req);
+
+        // Saubere Single-Quote-Variante ohne C#-/PowerShell-String-Konkatenation.
+        script.Should().Contain("Write-Information 'Container ''bcdev'' wurde erstellt.'");
+        // Alte Form (PS-Konkatenation mit "+") darf nicht mehr enthalten sein.
+        script.Should().NotContain("Write-Information \"Container '\" +");
+    }
+
+    [Fact]
+    public async Task GetVersionOptionsAsync_PassesCountryViaParams_NotInterpolated()
+    {
+        var sut = CreateSut(out var runner);
+        runner.WhenScriptContains("Get-BCArtifactUrl", () =>
+            FakePowerShellRunner.Success("28|28.0.46665.49591"));
+
+        await sut.GetVersionOptionsAsync(ArtifactType.OnPrem, "DE", topMajors: 6);
+
+        runner.Calls.Should().HaveCount(1);
+        var call = runner.Calls[0];
+
+        // Country darf NICHT roh ins Skript interpoliert werden.
+        call.Script.Should().NotContain("-country 'DE'");
+        call.Script.Should().NotContain("-type OnPrem ");
+        // Statt dessen über $Params:
+        call.Script.Should().Contain("$Params.Country");
+        call.Script.Should().Contain("$Params.Type");
+        call.Script.Should().Contain("$Params.TopMajors");
+
+        call.Variables.Should().NotBeNull();
+        call.Variables!["Country"].Should().Be("DE");
+        call.Variables!["Type"].Should().Be("OnPrem");
+        call.Variables!["TopMajors"].Should().Be(6);
+    }
+
+    [Fact]
+    public async Task GetVersionOptionsAsync_CountryWithApostrophe_DoesNotBreakScript()
+    {
+        var sut = CreateSut(out var runner);
+        runner.WhenScriptContains("Get-BCArtifactUrl", () => FakePowerShellRunner.Success());
+
+        // Apostroph in der Country-Eingabe würde bei naiver String-Interpolation
+        // den Quote-Kontext brechen oder zu Skript-Injection führen.
+        var malicious = "DE'; Remove-Item C:\\ -Recurse; '";
+        await sut.GetVersionOptionsAsync(ArtifactType.OnPrem, malicious, topMajors: 1);
+
+        var call = runner.Calls[0];
+        // Roh-Wert taucht NICHT im Skript auf (egal wie quoted).
+        call.Script.Should().NotContain(malicious);
+        call.Script.Should().NotContain("Remove-Item");
+        // Roh-Wert wandert stattdessen sicher in die Param-Datei.
+        call.Variables!["Country"].Should().Be(malicious);
+    }
+
+    [Fact]
+    public async Task GetVersionOptionsAsync_Sandbox_PassesSandboxType()
+    {
+        var sut = CreateSut(out var runner);
+        runner.WhenScriptContains("Get-BCArtifactUrl", () =>
+            FakePowerShellRunner.Success("28|28.0.0.0"));
+
+        await sut.GetVersionOptionsAsync(ArtifactType.Sandbox, "W1", topMajors: 3);
+
+        var call = runner.Calls[0];
+        call.Variables!["Type"].Should().Be("Sandbox");
+        call.Variables!["Country"].Should().Be("W1");
+        call.Variables!["TopMajors"].Should().Be(3);
+    }
 }

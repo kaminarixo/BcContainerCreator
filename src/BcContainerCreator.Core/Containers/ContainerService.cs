@@ -112,7 +112,7 @@ public sealed class ContainerService : IContainerService
         }
 
         sb.AppendLine("-updateHosts");
-        sb.AppendLine("Write-Information \"Container '\" + " + Quote(request.ContainerName) + " + \"' wurde erstellt.\"");
+        sb.AppendLine($"Write-Information {Quote($"Container '{request.ContainerName}' wurde erstellt.")}");
 
         return sb.ToString();
     }
@@ -208,10 +208,20 @@ public sealed class ContainerService : IContainerService
             return Array.Empty<ArtifactVersionOption>();
         }
 
-        var typeArg = type == ArtifactType.Sandbox ? "Sandbox" : "OnPrem";
+        // type/country/topMajors gehen NICHT als String-Interpolation ins Skript —
+        // Country ist im UI editierbar, ein Apostroph oder ein Skript-Fragment dürfen
+        // nicht aus dem Quote-Kontext ausbrechen. Stattdessen via $Params-Dictionary
+        // (siehe PowerShellRunner — JSON-Param-Datei) übergeben.
+        var variables = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["Type"] = type == ArtifactType.Sandbox ? "Sandbox" : "OnPrem",
+            ["Country"] = country,
+            ["TopMajors"] = topMajors,
+        };
+
         var script = $$"""
             Import-Module {{Constants.BcContainerHelperModule}} -ErrorAction Stop
-            $urls = Get-BCArtifactUrl -type {{typeArg}} -country '{{country}}' -select All -ErrorAction Stop
+            $urls = Get-BCArtifactUrl -type $Params.Type -country $Params.Country -select All -ErrorAction Stop
             $versions = $urls |
                 ForEach-Object {
                     if ($_ -match '/(\d+\.\d+\.\d+\.\d+)/[^/]+/?$') { $matches[1] }
@@ -221,11 +231,11 @@ public sealed class ContainerService : IContainerService
                 $latest = $_.Group | Sort-Object -Property { [Version]$_ } -Descending | Select-Object -First 1
                 "$($_.Name)|$latest"
             } | Sort-Object -Property { [int]($_ -split '\|')[0] } -Descending |
-                Select-Object -First {{topMajors}}
+                Select-Object -First ([int]$Params.TopMajors)
             $rows | ForEach-Object { Write-Output $_ }
             """;
 
-        var result = await _runner.ExecuteAsync(script, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var result = await _runner.ExecuteAsync(script, variables, cancellationToken).ConfigureAwait(false);
         if (!result.Success)
         {
             _logger.LogWarning("GetVersionOptionsAsync fehlgeschlagen: {Errors}", string.Join("; ", result.Errors));
