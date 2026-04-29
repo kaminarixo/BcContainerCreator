@@ -9,14 +9,17 @@ namespace BcContainerCreator.Core.Tests.Setup;
 
 public class SetupServiceTests
 {
-    private static (SetupService Sut, FakePowerShellRunner Runner, Mock<IDockerService> Docker, Mock<IElevationService> Elevation) CreateSut()
+    private static (SetupService Sut, FakePowerShellRunner Runner, Mock<IDockerService> Docker, Mock<IElevationService> Elevation) CreateSut(bool isAdmin = false)
     {
         var runner = new FakePowerShellRunner();
         var docker = new Mock<IDockerService>();
         var elevation = new Mock<IElevationService>();
         elevation.Setup(e => e.RunElevatedAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
                  .ReturnsAsync(true);
-        var sut = new SetupService(runner, docker.Object, elevation.Object, NullLogger<SetupService>.Instance);
+        // Admin-Probe wird injiziert, damit der Test-Runner-Kontext (z. B. ein
+        // GitHub-Actions-Windows-Runner, der per Default elevated ist) das
+        // Verhalten nicht verfälscht.
+        var sut = new SetupService(runner, docker.Object, elevation.Object, NullLogger<SetupService>.Instance, () => isAdmin);
         return (sut, runner, docker, elevation);
     }
 
@@ -58,12 +61,11 @@ public class SetupServiceTests
     [Fact]
     public async Task ApplyFixAsync_SwitchToWindowsMode_NonAdmin_ElevatesViaUac()
     {
-        // Default: AdminContext.IsCurrentProcessAdmin == false (Test-Process ist
-        // nicht elevated). Damit muss der Fix den ElevationService aufrufen, NICHT
-        // den DockerService direkt.
-        var (sut, runner, docker, elevation) = CreateSut();
-        elevation.Setup(e => e.RunElevatedAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
-                 .ReturnsAsync(true);
+        // Non-Admin-Pfad: der Fix muss den ElevationService aufrufen, NICHT den
+        // DockerService direkt. CreateSut(false) injiziert die Admin-Probe als
+        // 'false', damit das auch auf elevated Test-Runnern (z. B. GitHub
+        // Actions Windows-Runner) deterministisch durchläuft.
+        var (sut, runner, docker, elevation) = CreateSut(isAdmin: false);
 
         var ok = await sut.ApplyFixAsync("switch-to-windows-mode");
 
@@ -75,6 +77,23 @@ public class SetupServiceTests
             It.IsAny<CancellationToken>()),
             Times.Once);
         docker.Verify(d => d.SwitchToWindowsModeAsync(It.IsAny<CancellationToken>()), Times.Never);
+        runner.Calls.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ApplyFixAsync_SwitchToWindowsMode_Admin_CallsDockerDirectly()
+    {
+        // Admin-Pfad: der Fix umgeht den UAC-Prompt und ruft DockerService direkt.
+        var (sut, runner, docker, elevation) = CreateSut(isAdmin: true);
+        docker.Setup(d => d.SwitchToWindowsModeAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+        var ok = await sut.ApplyFixAsync("switch-to-windows-mode");
+
+        ok.Should().BeTrue();
+        docker.Verify(d => d.SwitchToWindowsModeAsync(It.IsAny<CancellationToken>()), Times.Once);
+        elevation.Verify(e => e.RunElevatedAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
         runner.Calls.Should().BeEmpty();
     }
 

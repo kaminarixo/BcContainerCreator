@@ -14,6 +14,7 @@ public sealed class SetupService : ISetupService
     private readonly IDockerService _docker;
     private readonly IElevationService _elevation;
     private readonly ILogger<SetupService> _logger;
+    private readonly Func<bool> _isCurrentProcessAdmin;
 
     private static readonly Dictionary<string, string> Fixes = new()
     {
@@ -31,12 +32,18 @@ public sealed class SetupService : ISetupService
         IPowerShellRunner runner,
         IDockerService docker,
         IElevationService elevation,
-        ILogger<SetupService> logger)
+        ILogger<SetupService> logger,
+        Func<bool>? isCurrentProcessAdmin = null)
     {
         _runner = runner;
         _docker = docker;
         _elevation = elevation;
         _logger = logger;
+        // Default-Probe gegen den statischen Helper. Tests können eine eigene
+        // Lambda injizieren, damit das Verhalten unabhängig davon ist, ob der
+        // Test-Runner selbst elevated läuft (auf GitHub-Actions-Windows-Runnern
+        // schlug der frühere Test sonst fehl).
+        _isCurrentProcessAdmin = isCurrentProcessAdmin ?? (() => AdminContext.IsCurrentProcessAdmin);
     }
 
     public IReadOnlyDictionary<string, string> AvailableFixes => Fixes;
@@ -62,7 +69,7 @@ public sealed class SetupService : ISetupService
             // DockerCli.exe -SwitchDaemon braucht Admin. Wenn die App selbst als
             // Standard-User läuft, wird der UAC-Prompt aufgehen — der User gibt
             // den lokalen Admin (.\admin) ein.
-            if (AdminContext.IsCurrentProcessAdmin)
+            if (_isCurrentProcessAdmin())
             {
                 return await _docker.SwitchToWindowsModeAsync(cancellationToken).ConfigureAwait(false);
             }
