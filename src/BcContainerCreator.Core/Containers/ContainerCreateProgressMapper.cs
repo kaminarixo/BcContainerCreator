@@ -1,18 +1,27 @@
-namespace BcContainerCreator.App.ViewModels;
+namespace BcContainerCreator.Core.Containers;
 
 /// <summary>
 /// Heuristische Stufen-basierte Fortschrittsanzeige. <c>New-BcContainer</c>
 /// hat keine echte 0–100%-API; wir scannen die Log-Zeilen auf bekannte
 /// Marker und mappen sie auf Prozent-Stufen. Der zurückgegebene Wert ist
 /// monoton (Aufrufer darf nur erhöhen, nie senken).
+/// <para>
+/// Bewusst in Core (nicht App), damit der Mapping-Tisch testbar ist
+/// ohne WPF-Abhängigkeit.
+/// </para>
 /// </summary>
-internal static class ContainerCreateProgressMapper
+public static class ContainerCreateProgressMapper
 {
+    /// <summary>Eine Stufe: Mindest-Prozent + Anzeigetext.</summary>
     public sealed record Stage(int Percent, string Text);
 
-    private static readonly (string Pattern, Stage Stage)[] Mapping =
+    /// <summary>
+    /// Pattern → Stage. Reihenfolge ist nicht relevant — <see cref="Match"/>
+    /// liefert den höchsten passenden Wert. Beim Mappen werden mehrere
+    /// Marker pro Zeile zugelassen.
+    /// </summary>
+    public static readonly IReadOnlyList<(string Pattern, Stage Stage)> Mapping =
     [
-        // Marker → Mindeststufe.
         ("BcContainerHelper version",                       new Stage(10, "BcContainerHelper geladen")),
         ("Artifact-URL:",                                   new Stage(15, "Artifact-URL ermittelt")),
         ("Pulling image",                                   new Stage(40, "Image-Download läuft")),

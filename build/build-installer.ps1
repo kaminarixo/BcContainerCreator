@@ -31,17 +31,27 @@ if (Test-Path $publishDir) {
 New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
 
 # 2. dotnet publish (framework-dependent, single-file)
+# DebugType=None + DebugSymbols=false → keine .pdb / .xml-Dateien neben der .exe.
+# Die Dokumentations-XMLs der Core-Lib brauchen wir im Installer nicht; PDBs
+# werden bei einem framework-dependent Single-File-Publish ohnehin nur als
+# Beifang abgelegt.
 Write-Host ""
 Write-Host "=== dotnet publish ==="
 & dotnet publish $appProject `
     -c Release `
     -r win-x64 `
     -p:PublishSingleFile=true `
+    -p:DebugType=None `
+    -p:DebugSymbols=false `
     --self-contained false `
     -o $publishDir
 if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish ist fehlgeschlagen (ExitCode $LASTEXITCODE)."
 }
+
+# Verirrte .xml / .pdb-Dateien aus Transitive-Deps trotzdem abräumen.
+Get-ChildItem -Path $publishDir -Include *.pdb,*.xml -Recurse -ErrorAction SilentlyContinue |
+    Remove-Item -Force -ErrorAction SilentlyContinue
 
 # 3. ISCC.exe finden
 $isccCandidates = @(

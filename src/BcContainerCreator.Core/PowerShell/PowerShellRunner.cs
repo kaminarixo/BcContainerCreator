@@ -1,10 +1,7 @@
 using System.Diagnostics;
 using System.IO;
-using System.Management.Automation;
 using System.Runtime.InteropServices;
 using System.Security;
-using System.Security.AccessControl;
-using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -25,11 +22,12 @@ namespace BcContainerCreator.Core.PowerShell;
 /// ineinander mischen (Container-Erstellung vs. Diagnose vs. List).
 /// </para>
 /// <para>
-/// Variablen werden als ACL-geschützte JSON-Datei (User-Temp) übergeben —
-/// nie via Prozessargument und nie als Plain-Text in Logs. Wenn die
-/// ACL-Restriktion fehlschlägt UND mindestens ein <see cref="SecureString"/>
-/// im Variables-Dictionary war, bricht <see cref="ExecuteAsync"/> ab statt
-/// das Klartext-Passwort in einer breiter lesbaren Datei zu hinterlassen.
+/// Variablen werden als JSON-Datei in einem User-only-Verzeichnis unter
+/// <c>%LOCALAPPDATA%\BcContainerCreator\runtime\</c> übergeben — nie via
+/// Prozessargument und nie als Plain-Text in Logs. <c>%LOCALAPPDATA%</c>
+/// hat per Default ACLs, die nur dem aktuellen User Zugriff geben — daher
+/// keine Per-Datei-Race zwischen Create-und-ACL-Setzen, wie sie der Temp-
+/// Pfad mit Default-ACL hatte.
 /// </para>
 /// </summary>
 public sealed class PowerShellRunner : IPowerShellRunner
@@ -38,12 +36,17 @@ public sealed class PowerShellRunner : IPowerShellRunner
 
     private readonly ILogger<PowerShellRunner> _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly string _runtimeDir;
 
     public event EventHandler<PowerShellOutputEventArgs>? OutputReceived;
 
     public PowerShellRunner(ILogger<PowerShellRunner> logger)
     {
         _logger = logger;
+        _runtimeDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "BcContainerCreator", "runtime");
+        Directory.CreateDirectory(_runtimeDir);
     }
 
     public Task InitializeAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
@@ -69,7 +72,7 @@ public sealed class PowerShellRunner : IPowerShellRunner
         {
             return new PSResult(
                 Success: false,
-                Objects: Array.Empty<PSObject>(),
+                Objects: Array.Empty<string>(),
                 Errors: new[] { "Abgebrochen vor PowerShell-Start." },
                 Duration: TimeSpan.Zero,
                 WasCancelled: true,
@@ -88,18 +91,7 @@ public sealed class PowerShellRunner : IPowerShellRunner
         {
             if (variables is { Count: > 0 })
             {
-                paramFilePath = WriteParamFile(variables, out var containsSecret);
-                var aclOk = TryRestrictAclToCurrentUser(paramFilePath);
-                if (!aclOk && containsSecret)
-                {
-                    // Hard-Abort: Klartext-Passwort darf nicht in einer Datei
-                    // mit unsicherer ACL liegen — sofort löschen und melden.
-                    TryDelete(paramFilePath);
-                    paramFilePath = null;
-                    throw new InvalidOperationException(
-                        "Konnte Param-Datei nicht auf den aktuellen User beschränken — Abbruch, " +
-                        "weil das Variables-Dictionary mindestens ein SecureString-Secret enthält.");
-                }
+                paramFilePath = WriteParamFile(variables);
             }
 
             scriptFilePath = WriteScriptFile(script);
@@ -178,14 +170,10 @@ public sealed class PowerShellRunner : IPowerShellRunner
             var exitCode = process.ExitCode;
             var success = !wasCancelled && exitCode == 0;
 
-            // stdout-Zeilen als PSObject-Wrapper, damit Aufrufer mit
-            // Objects.FirstOrDefault()?.ToString() weiter funktionieren.
-            var objects = stdoutLines.Select(l => new PSObject(l)).ToList();
-
             return new PSResult(
                 Success: success,
-                Objects: objects,
-                Errors: stderrLines.ToList(),
+                Objects: stdoutLines,
+                Errors: stderrLines,
                 Duration: stopwatch.Elapsed,
                 WasCancelled: wasCancelled,
                 ExitCode: exitCode);
@@ -195,7 +183,7 @@ public sealed class PowerShellRunner : IPowerShellRunner
             stopwatch.Stop();
             _logger.LogError(ex, "PowerShell-Ausführung fehlgeschlagen");
             stderrLines.Add(ex.Message);
-            return new PSResult(false, Array.Empty<PSObject>(), stderrLines, stopwatch.Elapsed, wasCancelled, -1);
+            return new PSResult(false, Array.Empty<string>(), stderrLines, stopwatch.Elapsed, wasCancelled, -1);
         }
         finally
         {
@@ -214,7 +202,11 @@ public sealed class PowerShellRunner : IPowerShellRunner
 
     private string WriteScriptFile(string userScript)
     {
-        var path = Path.Combine(Path.GetTempPath(), $"bcc-{Guid.NewGuid():N}.ps1");
+        // Auch das Skript landet im User-only-Verzeichnis — nicht der globale
+        // Temp. Damit lecken auch keine BcContainerHelper-Aufrufe (mit
+        // eingebetteten Pfad-Refs) in einen Pfad, in dem andere User lesen
+        // könnten.
+        var path = Path.Combine(_runtimeDir, $"bcc-{Guid.NewGuid():N}.ps1");
 
         var prefix = """
             $ErrorActionPreference = 'Stop'
@@ -284,11 +276,17 @@ public sealed class PowerShellRunner : IPowerShellRunner
         return path;
     }
 
-    private string WriteParamFile(IDictionary<string, object?> variables, out bool containsSecret)
+    /// <summary>
+    /// Schreibt das Variables-Dictionary als JSON in das User-only-Verzeichnis.
+    /// Standard-ACL von <c>%LOCALAPPDATA%</c> beschränkt Zugriff auf den
+    /// aktuellen User — dadurch existiert kein Zeitfenster, in dem die
+    /// Klartext-Bytes für andere lokale User lesbar wären, wie es im globalen
+    /// Temp-Pfad der Fall war.
+    /// </summary>
+    private string WriteParamFile(IDictionary<string, object?> variables)
     {
-        var path = Path.Combine(Path.GetTempPath(), $"bcc-params-{Guid.NewGuid():N}.json");
+        var path = Path.Combine(_runtimeDir, $"bcc-params-{Guid.NewGuid():N}.json");
 
-        containsSecret = false;
         var serializable = new Dictionary<string, object?>(StringComparer.Ordinal);
         var sensitiveKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var kvp in variables)
@@ -297,7 +295,6 @@ public sealed class PowerShellRunner : IPowerShellRunner
             {
                 serializable[kvp.Key] = SecureStringToPlain(ss);
                 sensitiveKeys.Add(kvp.Key);
-                containsSecret = true;
             }
             else
             {
@@ -316,46 +313,6 @@ public sealed class PowerShellRunner : IPowerShellRunner
         }
 
         return path;
-    }
-
-    /// <summary>
-    /// Liefert <c>true</c>, wenn die ACL erfolgreich auf den aktuellen User
-    /// beschränkt wurde. Bei <c>false</c> sollte der Aufrufer entscheiden, ob
-    /// er weitermacht (kein Secret) oder hard-abbricht (Secret im Spiel).
-    /// </summary>
-    private bool TryRestrictAclToCurrentUser(string path)
-    {
-        try
-        {
-            var fi = new FileInfo(path);
-            var acl = fi.GetAccessControl();
-            acl.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
-
-            var rules = acl.GetAccessRules(true, false, typeof(SecurityIdentifier));
-            foreach (FileSystemAccessRule rule in rules)
-            {
-                acl.RemoveAccessRule(rule);
-            }
-
-            using var identity = WindowsIdentity.GetCurrent();
-            if (identity.User is null)
-            {
-                return false;
-            }
-
-            acl.AddAccessRule(new FileSystemAccessRule(
-                identity.User,
-                FileSystemRights.FullControl,
-                AccessControlType.Allow));
-
-            fi.SetAccessControl(acl);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "ACL-Restriktion auf Param-File fehlgeschlagen");
-            return false;
-        }
     }
 
     private static string SecureStringToPlain(SecureString ss)

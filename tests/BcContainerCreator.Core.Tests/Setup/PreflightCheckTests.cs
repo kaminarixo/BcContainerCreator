@@ -35,7 +35,7 @@ public class PreflightCheckTests
             "Ausführungs-Kontext", "Windows-Edition", "PowerShell-Version", "ExecutionPolicy (CurrentUser)",
             "NuGet-PackageProvider", "PSGallery vertrauenswürdig",
             "Docker installiert", "Docker-Daemon läuft", "Docker im Windows-Modus",
-            "BcContainerHelper-Modul", "Kein Legacy-Modul"
+            "BcContainerHelper-Modul", "BcContainerHelper-Berechtigungen", "Kein Legacy-Modul"
         });
     }
 
@@ -111,5 +111,51 @@ public class PreflightCheckTests
         policy.Status.Should().Be(CheckStatus.Warning);
         policy.IsFixable.Should().BeTrue();
         policy.FixId.Should().Be("set-execution-policy");
+    }
+
+    [Fact]
+    public async Task BcContainerHelperPermissions_Ok_StatusOk()
+    {
+        var (sut, runner, _) = CreateSut();
+        runner.WhenScriptContains("Check-BcContainerHelperPermissions",
+            () => FakePowerShellRunner.Success("ok"));
+
+        var results = await sut.RunAllAsync();
+        var perms = results.Single(r => r.Name == "BcContainerHelper-Berechtigungen");
+
+        perms.Status.Should().Be(CheckStatus.Ok);
+        perms.IsFixable.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task BcContainerHelperPermissions_NeedsFix_FixableWithAdmin()
+    {
+        var (sut, runner, _) = CreateSut();
+        runner.WhenScriptContains("Check-BcContainerHelperPermissions",
+            () => FakePowerShellRunner.Success("needs-fix: Cannot write to C:\\ProgramData\\BcContainerHelper"));
+
+        var results = await sut.RunAllAsync();
+        var perms = results.Single(r => r.Name == "BcContainerHelper-Berechtigungen");
+
+        perms.Status.Should().Be(CheckStatus.Warning);
+        perms.IsFixable.Should().BeTrue();
+        perms.FixId.Should().Be("fix-bccontainerhelper-permissions");
+        perms.RequiresAdminForFix.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task BcContainerHelperPermissions_CmdletMissing_NotFixable()
+    {
+        var (sut, runner, _) = CreateSut();
+        runner.WhenScriptContains("Check-BcContainerHelperPermissions",
+            () => FakePowerShellRunner.Success("cmdlet-missing"));
+
+        var results = await sut.RunAllAsync();
+        var perms = results.Single(r => r.Name == "BcContainerHelper-Berechtigungen");
+
+        // Cmdlet fehlt → BcContainerHelper installieren ist die Voraussetzung,
+        // nicht der Permissions-Fix; dieser Check ist hier informativ.
+        perms.Status.Should().Be(CheckStatus.Warning);
+        perms.IsFixable.Should().BeFalse();
     }
 }

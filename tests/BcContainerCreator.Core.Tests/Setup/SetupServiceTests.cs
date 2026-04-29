@@ -96,7 +96,27 @@ public class SetupServiceTests
         sut.AvailableFixes.Keys.Should().Contain(new[]
         {
             "set-execution-policy", "install-nuget-provider", "trust-psgallery",
-            "install-bccontainerhelper", "remove-legacy-module", "switch-to-windows-mode"
+            "install-bccontainerhelper", "remove-legacy-module", "switch-to-windows-mode",
+            "fix-bccontainerhelper-permissions"
         });
+    }
+
+    [Fact]
+    public async Task ApplyFixAsync_BcchPermissions_ElevatesPowerShell()
+    {
+        var (sut, runner, _, elevation) = CreateSut();
+
+        var ok = await sut.ApplyFixAsync("fix-bccontainerhelper-permissions");
+
+        ok.Should().BeTrue();
+        // Permissions-Fix läuft elevated über powershell.exe — NICHT durch den
+        // unprivilegierten Runner. Sonst wäre das Cmdlet wirkungslos.
+        elevation.Verify(e => e.RunElevatedAsync(
+            It.Is<string>(s => s.Equals("powershell.exe", StringComparison.OrdinalIgnoreCase)),
+            It.Is<string>(a => a.Contains("-File")),
+            It.IsAny<TimeSpan?>(),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+        runner.Calls.Should().BeEmpty();
     }
 }

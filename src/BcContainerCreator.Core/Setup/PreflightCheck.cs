@@ -30,6 +30,7 @@ public sealed class PreflightCheck : IPreflightCheck
         "docker-running",
         "docker-mode",
         "bccontainerhelper-installed",
+        "bccontainerhelper-permissions",
         "legacy-navcontainerhelper",
         "external-ps-smoketest"
     ];
@@ -67,6 +68,7 @@ public sealed class PreflightCheck : IPreflightCheck
         await Run(CheckDockerRunningAsync).ConfigureAwait(false);
         await Run(CheckDockerModeAsync).ConfigureAwait(false);
         await Run(CheckBcContainerHelperAsync).ConfigureAwait(false);
+        await Run(CheckBcContainerHelperPermissionsAsync).ConfigureAwait(false);
         await Run(CheckLegacyNavContainerHelperAsync).ConfigureAwait(false);
         await Run(CheckExternalPSSmokeAsync).ConfigureAwait(false);
 
@@ -151,7 +153,7 @@ public sealed class PreflightCheck : IPreflightCheck
             "$edition|$product|$build"
             """;
         var result = await _runner.ExecuteAsync(script, cancellationToken: ct).ConfigureAwait(false);
-        var raw = result.Objects.FirstOrDefault()?.ToString() ?? string.Empty;
+        var raw = result.Objects.FirstOrDefault() ?? string.Empty;
         var parts = raw.Split('|', 3);
         var edition = parts.Length > 0 ? parts[0] : string.Empty;
         var product = parts.Length > 1 ? parts[1] : string.Empty;
@@ -205,7 +207,7 @@ public sealed class PreflightCheck : IPreflightCheck
         var r = await _runner.ExecuteAsync(
             "Write-Output $PSVersionTable.PSVersion.ToString()",
             cancellationToken: ct).ConfigureAwait(false);
-        var version = r.Objects.FirstOrDefault()?.ToString() ?? "unbekannt";
+        var version = r.Objects.FirstOrDefault() ?? "unbekannt";
         return new CheckResult(
             Name: "PowerShell-Version",
             Status: r.Success ? CheckStatus.Ok : CheckStatus.Warning,
@@ -219,7 +221,7 @@ public sealed class PreflightCheck : IPreflightCheck
             "(Get-ExecutionPolicy -Scope CurrentUser).ToString()",
             cancellationToken: ct).ConfigureAwait(false);
 
-        var policy = r.Objects.FirstOrDefault()?.ToString() ?? "Undefined";
+        var policy = r.Objects.FirstOrDefault() ?? "Undefined";
         var isOk = policy is "RemoteSigned" or "Unrestricted" or "Bypass";
         return new CheckResult(
             Name: "ExecutionPolicy (CurrentUser)",
@@ -235,7 +237,7 @@ public sealed class PreflightCheck : IPreflightCheck
             "if (Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue) { 'yes' } else { 'no' }",
             cancellationToken: ct).ConfigureAwait(false);
 
-        var ok = r.Objects.Any(o => string.Equals(o?.ToString(), "yes", StringComparison.OrdinalIgnoreCase));
+        var ok = r.Objects.Any(o => string.Equals(o, "yes", StringComparison.OrdinalIgnoreCase));
         return new CheckResult(
             Name: "NuGet-PackageProvider",
             Status: ok ? CheckStatus.Ok : CheckStatus.Warning,
@@ -269,7 +271,7 @@ public sealed class PreflightCheck : IPreflightCheck
             """;
 
         var r = await _runner.ExecuteAsync(script, cancellationToken: ct).ConfigureAwait(false);
-        var policy = r.Objects.FirstOrDefault()?.ToString() ?? "unknown";
+        var policy = r.Objects.FirstOrDefault() ?? "unknown";
         var ok = string.Equals(policy, "Trusted", StringComparison.OrdinalIgnoreCase);
         return new CheckResult(
             Name: "PSGallery vertrauenswürdig",
@@ -323,7 +325,7 @@ public sealed class PreflightCheck : IPreflightCheck
             $"(Get-Module -ListAvailable -Name {Constants.BcContainerHelperModule}).Version | Select-Object -First 1 | ForEach-Object {{ $_.ToString() }}",
             cancellationToken: ct).ConfigureAwait(false);
 
-        var version = r.Objects.FirstOrDefault()?.ToString();
+        var version = r.Objects.FirstOrDefault();
         var ok = !string.IsNullOrWhiteSpace(version);
         return new CheckResult(
             Name: "BcContainerHelper-Modul",
@@ -333,13 +335,85 @@ public sealed class PreflightCheck : IPreflightCheck
             FixId: "install-bccontainerhelper");
     }
 
+    /// <summary>
+    /// Prüft via <c>Check-BcContainerHelperPermissions</c>, ob der aktuelle User
+    /// Schreibrechte auf <c>%ProgramData%\BcContainerHelper</c>, die hosts-Datei
+    /// und docker-CLI hat. Das Cmdlet ist Teil von BcContainerHelper; bei
+    /// Warnings (fehlende Rechte) bieten wir einen elevated Fix an, der
+    /// <c>Check-BcContainerHelperPermissions -Fix</c> ausführt.
+    /// </summary>
+    private async Task<CheckResult> CheckBcContainerHelperPermissionsAsync(CancellationToken ct)
+    {
+        const string script = """
+            Import-Module BcContainerHelper -ErrorAction SilentlyContinue
+            if (-not (Get-Command Check-BcContainerHelperPermissions -ErrorAction SilentlyContinue)) {
+                Write-Output 'cmdlet-missing'
+                exit 0
+            }
+            $warnings = New-Object System.Collections.ArrayList
+            try {
+                Check-BcContainerHelperPermissions -ErrorAction Stop -WarningVariable warnings -WarningAction SilentlyContinue | Out-Null
+            } catch {
+                Write-Output ('error: ' + $_.Exception.Message)
+                exit 0
+            }
+            if ($warnings.Count -gt 0) {
+                Write-Output ('needs-fix: ' + (($warnings | ForEach-Object { $_.ToString() }) -join ' | '))
+            } else {
+                Write-Output 'ok'
+            }
+            """;
+
+        var r = await _runner.ExecuteAsync(script, cancellationToken: ct).ConfigureAwait(false);
+        var line = r.Objects.FirstOrDefault() ?? "unknown";
+
+        const string name = "BcContainerHelper-Berechtigungen";
+        if (string.Equals(line, "cmdlet-missing", StringComparison.OrdinalIgnoreCase))
+        {
+            return new CheckResult(
+                Name: name,
+                Status: CheckStatus.Warning,
+                Message: "Check-Cmdlet nicht verfügbar — Modul fehlt oder lädt nicht. Erst BcContainerHelper installieren.",
+                IsFixable: false);
+        }
+        if (string.Equals(line, "ok", StringComparison.OrdinalIgnoreCase))
+        {
+            return new CheckResult(
+                Name: name,
+                Status: CheckStatus.Ok,
+                Message: "ProgramData, hosts und Docker-CLI für aktuellen User schreibbar.");
+        }
+        if (line.StartsWith("needs-fix:", StringComparison.OrdinalIgnoreCase))
+        {
+            var detail = line["needs-fix:".Length..].Trim();
+            return new CheckResult(
+                Name: name,
+                Status: CheckStatus.Warning,
+                Message: $"Fehlende Rechte: {Truncate(detail, 240)}",
+                IsFixable: true,
+                FixId: "fix-bccontainerhelper-permissions",
+                RequiresAdminForFix: true);
+        }
+        // 'error: ...' oder unerwartet
+        return new CheckResult(
+            Name: name,
+            Status: CheckStatus.Failed,
+            Message: Truncate(line, 240),
+            IsFixable: true,
+            FixId: "fix-bccontainerhelper-permissions",
+            RequiresAdminForFix: true);
+    }
+
+    private static string Truncate(string s, int max) =>
+        string.IsNullOrEmpty(s) || s.Length <= max ? s : s[..max] + "…";
+
     private async Task<CheckResult> CheckLegacyNavContainerHelperAsync(CancellationToken ct)
     {
         var r = await _runner.ExecuteAsync(
             $"if (Get-Module -ListAvailable -Name {Constants.LegacyNavContainerHelperModule}) {{ 'yes' }} else {{ 'no' }}",
             cancellationToken: ct).ConfigureAwait(false);
 
-        var hasLegacy = r.Objects.Any(o => string.Equals(o?.ToString(), "yes", StringComparison.OrdinalIgnoreCase));
+        var hasLegacy = r.Objects.Any(o => string.Equals(o, "yes", StringComparison.OrdinalIgnoreCase));
         return new CheckResult(
             Name: "Kein Legacy-Modul",
             Status: hasLegacy ? CheckStatus.Warning : CheckStatus.Ok,

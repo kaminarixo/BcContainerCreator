@@ -16,7 +16,15 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public string AppVersion { get; }
     public string DotNetVersion { get; } = Environment.Version.ToString();
-    public string OsVersion { get; } = Environment.OSVersion.ToString();
+
+    /// <summary>
+    /// Anzeigetext fürs OS. Achtung: <see cref="Environment.OSVersion"/>
+    /// liefert auf Windows 11 weiterhin "Microsoft Windows NT 10.0…" (das ist
+    /// historisch eingefroren). Korrekte 10-vs-11-Unterscheidung geht nur über
+    /// die Build-Number — gleicher Trick wie im Preflight-Check.
+    /// </summary>
+    public string OsVersion { get; } = BuildOsVersionLabel();
+
     public string LogFolder { get; }
     public string ContextLabel { get; } =
         AdminContext.IsCurrentProcessAdmin ? "Admin-Modus" : "Standard-User (Admin via UAC on demand)";
@@ -35,6 +43,15 @@ public sealed partial class SettingsViewModel : ObservableObject
         LogFolder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
             "BcContainerCreator", "Logs");
+    }
+
+    private static string BuildOsVersionLabel()
+    {
+        var v = Environment.OSVersion.Version;
+        // Build-Number 22000 markiert den Sprung 10 → 11. Server-Builds (z. B.
+        // 20348 = Server 2022) bekommen weiterhin "Windows 10/Server 10".
+        var product = v.Build >= 22000 ? "Windows 11" : "Windows 10";
+        return $"{product} (Build {v.Build}.{v.Revision})";
     }
 
     [RelayCommand]

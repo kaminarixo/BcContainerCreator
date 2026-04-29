@@ -32,7 +32,7 @@ public sealed class DockerService : IDockerService
             _logger.LogWarning("Docker-CLI-Check fehlgeschlagen: {Errors}", string.Join("; ", result.Errors));
             return false;
         }
-        return result.Objects.Any(o => string.Equals(o?.ToString(), "yes", StringComparison.OrdinalIgnoreCase));
+        return result.Objects.Any(o => string.Equals(o, "yes", StringComparison.OrdinalIgnoreCase));
     }
 
     public async Task<bool> IsRunningAsync(CancellationToken cancellationToken = default)
@@ -61,7 +61,7 @@ public sealed class DockerService : IDockerService
             return ContainerMode.Unknown;
         }
 
-        var osType = result.Objects[0]?.ToString()?.Trim().ToLowerInvariant();
+        var osType = result.Objects[0]?.Trim().ToLowerInvariant();
         return osType switch
         {
             "windows" => ContainerMode.Windows,
