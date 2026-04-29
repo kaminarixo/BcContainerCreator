@@ -244,9 +244,8 @@ public sealed class ContainerService : IContainerService
 
         var options = new List<ArtifactVersionOption>();
         string? newestBuild = null;
-        foreach (var obj in result.Objects)
+        foreach (var raw in result.Objects)
         {
-            var raw = obj?.ToString();
             if (string.IsNullOrWhiteSpace(raw)) continue;
             var parts = raw.Split('|', 2);
             if (parts.Length < 2) continue;
@@ -282,9 +281,8 @@ public sealed class ContainerService : IContainerService
         }
 
         var containers = new List<ContainerInfo>();
-        foreach (var obj in result.Objects)
+        foreach (var line in result.Objects)
         {
-            var line = obj?.ToString();
             if (string.IsNullOrWhiteSpace(line)) continue;
             // Wrapper-Zeilen wie '--- FEHLER ---' überspringen.
             if (!line.TrimStart().StartsWith("{")) continue;
@@ -365,17 +363,23 @@ public sealed class ContainerService : IContainerService
         {
             return string.Join(Environment.NewLine, result.Errors);
         }
-        return string.Join(Environment.NewLine, result.Objects.Select(o => o?.ToString() ?? string.Empty));
+        return string.Join(Environment.NewLine, result.Objects);
     }
 
     private static string GetString(System.Text.Json.JsonElement el, string prop) =>
         el.TryGetProperty(prop, out var v) ? v.GetString() ?? string.Empty : string.Empty;
 
     /// <summary>
-    /// Quoted einen docker-Argument-String defensiv (nur a-z A-Z 0-9 _ - .).
+    /// Quoted einen docker-Argument-String defensiv. Erlaubt sind nur die
+    /// Docker-Container-Naming-Zeichen (a-z, A-Z, 0-9, '-', '_', '.'). Sonst
+    /// wird geworfen — wir wollen nie ein gefährliches Argument an die docker-
+    /// CLI rauslassen, auch wenn die UI-Validierung das schon verhindert.
+    /// Internal weil <c>InternalsVisibleTo</c> dem Test-Assembly direkten
+    /// Zugriff gibt — saubere Unit-Tests ohne Public-API-Bloat.
     /// </summary>
-    private static string QuoteForDocker(string s)
+    internal static string QuoteForDocker(string s)
     {
+        ArgumentException.ThrowIfNullOrEmpty(s);
         foreach (var c in s)
         {
             if (!char.IsLetterOrDigit(c) && c is not ('-' or '_' or '.'))

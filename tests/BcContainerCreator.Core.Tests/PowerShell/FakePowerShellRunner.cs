@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Management.Automation;
 using BcContainerCreator.Core.PowerShell;
 
 namespace BcContainerCreator.Core.Tests.PowerShell;
@@ -40,7 +39,7 @@ public sealed class FakePowerShellRunner : IPowerShellRunner
         }
 
         // Default: leeres Erfolgs-Resultat.
-        return Task.FromResult(new PSResult(true, Array.Empty<PSObject>(), Array.Empty<string>(), TimeSpan.Zero));
+        return Task.FromResult(new PSResult(true, Array.Empty<string>(), Array.Empty<string>(), TimeSpan.Zero));
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
@@ -48,12 +47,9 @@ public sealed class FakePowerShellRunner : IPowerShellRunner
     public void RaiseOutput(PSStreamType type, string message) =>
         OutputReceived?.Invoke(this, new PowerShellOutputEventArgs(type, message));
 
-    public static PSResult Success(params string[] outputs)
-    {
-        var objs = outputs.Select(o => new PSObject(o)).ToList();
-        return new PSResult(true, objs, Array.Empty<string>(), TimeSpan.Zero);
-    }
+    public static PSResult Success(params string[] outputs) =>
+        new(true, outputs.ToList(), Array.Empty<string>(), TimeSpan.Zero);
 
     public static PSResult Failure(string error) =>
-        new(false, Array.Empty<PSObject>(), new[] { error }, TimeSpan.Zero);
+        new(false, Array.Empty<string>(), new[] { error }, TimeSpan.Zero);
 }

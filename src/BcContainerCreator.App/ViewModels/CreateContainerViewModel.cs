@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel.DataAnnotations;
 using System.Security;
+using System.Text;
 using BcContainerCreator.App.Services;
 using BcContainerCreator.Core;
 using BcContainerCreator.Core.Containers;
@@ -14,17 +15,27 @@ namespace BcContainerCreator.App.ViewModels;
 /// <summary>
 /// ViewModel des "Container erstellen"-Tabs. Validierung über DataAnnotations.
 /// Versions-Liste und "latest"-Auflösung kommen aus dem ContainerService;
-/// Passwort wird als Plain-String gehalten (Show/Hide-Toggle) und beim
-/// Submit in einen <see cref="SecureString"/> konvertiert.
+/// das Passwort wird intern als Plain-String gehalten (Show/Hide-Toggle in
+/// der UI braucht ihn) und beim Submit in einen <see cref="SecureString"/>
+/// konvertiert. Der String wird nirgendwo geloggt und nur an die ACL-
+/// geschützte Param-Datei des PowerShellRunners weitergereicht.
 /// </summary>
 public sealed partial class CreateContainerViewModel : ObservableValidator
 {
     private const string LatestVersionToken = "latest";
-    private const string DefaultPassword = "P@ssw0rd1";
+
+    /// <summary>
+    /// Hartes Cap für den Live-Output, damit WPF beim Container-Pull (extrem
+    /// viele Layer-Fortschritts-Zeilen) den TextBox-Visual-Tree nicht in einen
+    /// Layout-Stack-Overflow treibt. Bei Überschreitung wird vom Anfang
+    /// gekürzt.
+    /// </summary>
+    private const int OutputMaxChars = 200_000;
 
     private readonly IContainerService _containerService;
     private readonly IDialogService _dialogService;
     private readonly ILogger<CreateContainerViewModel> _logger;
+    private readonly StringBuilder _outputBuffer = new();
     private CancellationTokenSource? _createCts;
     private CancellationTokenSource? _versionsCts;
 
@@ -85,10 +96,15 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
     [NotifyCanExecuteChangedFor(nameof(CreateCommand))]
     private string _username = Environment.UserName;
 
-    /// <summary>Passwort als Plain-String — beim Submit zu SecureString.</summary>
+    /// <summary>
+    /// Passwort als Plain-String — beim Submit zu SecureString konvertiert.
+    /// Default ist leer; ein hardcodiertes "P@ssw0rd1" hatten wir früher,
+    /// das ist jetzt explizit weg, damit jede Erst-Erstellung einen bewussten
+    /// User-Input erzwingt.
+    /// </summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CreateCommand))]
-    private string _password = DefaultPassword;
+    private string _password = string.Empty;
 
     [ObservableProperty]
     private bool _showPassword;
@@ -237,6 +253,7 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
         _createCts?.Cancel();
         _createCts = new CancellationTokenSource();
         IsRunning = true;
+        _outputBuffer.Clear();
         Output = string.Empty;
 
         // Fortschritt initialisieren — Marquee bis erste Stage erkannt wird.
@@ -314,12 +331,26 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
 
     /// <summary>
     /// Wird für jede stdout/stderr-Zeile aus dem externen powershell.exe
-    /// aufgerufen. Hängt sie ans Output-Feld an UND aktualisiert die
-    /// Fortschritts-Stage (monoton steigend).
+    /// aufgerufen. Hängt sie an einen <see cref="StringBuilder"/> mit
+    /// hartem Cap (siehe <see cref="OutputMaxChars"/>) — sonst wächst die
+    /// gebundene TextBox bei einem Image-Pull (zigtausende Layer-Zeilen)
+    /// in einen WPF-Layout-Stack-Overflow.
     /// </summary>
     private void OnPsLine(string line)
     {
-        Output += line + Environment.NewLine;
+        _outputBuffer.Append(line).Append(Environment.NewLine);
+
+        if (_outputBuffer.Length > OutputMaxChars)
+        {
+            // Vom Anfang abschneiden, damit das Ende (= aktueller Verlauf)
+            // sichtbar bleibt. Pufferung großzügig: erst kürzen, wenn deutlich
+            // über dem Cap, damit nicht jeder Append eine Re-Allocation auslöst.
+            var overflow = _outputBuffer.Length - OutputMaxChars;
+            _outputBuffer.Remove(0, overflow);
+            _outputBuffer.Insert(0, "[…früherer Output gekürzt…]" + Environment.NewLine);
+        }
+
+        Output = _outputBuffer.ToString();
 
         var stage = ContainerCreateProgressMapper.Match(line);
         if (stage is null) return;

@@ -1,6 +1,4 @@
 using System.IO;
-using System.Net;
-using System.Runtime.InteropServices;
 using System.Security;
 using System.Security.Cryptography;
 using System.Text;
@@ -14,6 +12,13 @@ namespace BcContainerCreator.Core.Containers;
 /// JSON-Dateien pro Container unter
 /// <c>%APPDATA%\BcContainerCreator\containers\&lt;name&gt;.json</c>.
 /// Passwort wird via <see cref="ProtectedData"/> CurrentUser verschlüsselt.
+/// <para>
+/// Encrypt/Decrypt nutzen konsistent UTF-8 für den Plain-Text-Roundtrip:
+/// <see cref="SecureString"/> → Plain-String → UTF-8-Bytes → DPAPI →
+/// Cipher-Bytes; und zurück. Ein älterer Stand schrieb BSTR-Bytes (UTF-16LE)
+/// und las sie als UTF-8 zurück — der Roundtrip lieferte einen Müll-String
+/// mit eingebetteten Null-Bytes.
+/// </para>
 /// </summary>
 public sealed class ContainerMetadataStore : IContainerMetadataStore
 {
@@ -30,13 +35,23 @@ public sealed class ContainerMetadataStore : IContainerMetadataStore
     private readonly string _root;
 
     public ContainerMetadataStore(ILogger<ContainerMetadataStore> logger)
+        : this(logger, DefaultRoot())
+    {
+    }
+
+    /// <summary>
+    /// Test-Konstruktor mit explizitem Root-Verzeichnis. Nicht für Produktiv-DI.
+    /// </summary>
+    public ContainerMetadataStore(ILogger<ContainerMetadataStore> logger, string rootDirectory)
     {
         _logger = logger;
-        _root = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "BcContainerCreator", "containers");
+        _root = rootDirectory;
         Directory.CreateDirectory(_root);
     }
+
+    private static string DefaultRoot() => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "BcContainerCreator", "containers");
 
     public async Task SaveAsync(
         string containerName,
@@ -53,7 +68,7 @@ public sealed class ContainerMetadataStore : IContainerMetadataStore
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(containerName);
 
-        var cipher = password is null ? null : EncryptSecure(password);
+        var cipher = password is null || password.Length == 0 ? null : EncryptSecure(password);
         var meta = new ContainerMetadata(
             Name: containerName,
             CreatedAt: createdAt,
@@ -96,6 +111,7 @@ public sealed class ContainerMetadataStore : IContainerMetadataStore
         try
         {
             var bytes = ProtectedData.Unprotect(cipher, DpapiEntropy, DataProtectionScope.CurrentUser);
+            // Encrypt-Pfad legt UTF-8-Bytes ab — siehe EncryptSecure unten.
             return Encoding.UTF8.GetString(bytes);
         }
         catch (Exception ex)
@@ -126,24 +142,41 @@ public sealed class ContainerMetadataStore : IContainerMetadataStore
         return Path.Combine(_root, $"{name}.json");
     }
 
+    /// <summary>
+    /// SecureString → Plain-String → UTF-8-Bytes → DPAPI. Der Plain-Buffer
+    /// wird nach dem Encrypt explizit auf 0 überschrieben, damit das Klartext-
+    /// Passwort möglichst kurz im Managed-Heap liegt.
+    /// </summary>
     private static byte[] EncryptSecure(SecureString password)
     {
-        // SecureString → BSTR → byte[] → DPAPI. Plain-Bytes werden danach gewiped.
-        IntPtr bstr = IntPtr.Zero;
-        byte[]? plain = null;
+        var plain = SecureStringToPlain(password);
+        byte[]? bytes = null;
         try
         {
-            bstr = Marshal.SecureStringToBSTR(password);
-            var len = Marshal.ReadInt32(bstr, -4); // BSTR length-prefix
-            plain = new byte[len];
-            Marshal.Copy(bstr, plain, 0, len);
-            // BSTR ist UTF-16LE — DPAPI verschlüsselt das transparent.
-            return ProtectedData.Protect(plain, DpapiEntropy, DataProtectionScope.CurrentUser);
+            bytes = Encoding.UTF8.GetBytes(plain);
+            return ProtectedData.Protect(bytes, DpapiEntropy, DataProtectionScope.CurrentUser);
         }
         finally
         {
-            if (bstr != IntPtr.Zero) Marshal.ZeroFreeBSTR(bstr);
-            if (plain is not null) Array.Clear(plain, 0, plain.Length);
+            if (bytes is not null) Array.Clear(bytes, 0, bytes.Length);
+        }
+    }
+
+    private static string SecureStringToPlain(SecureString ss)
+    {
+        if (ss.Length == 0) return string.Empty;
+        IntPtr bstr = IntPtr.Zero;
+        try
+        {
+            bstr = System.Runtime.InteropServices.Marshal.SecureStringToBSTR(ss);
+            return System.Runtime.InteropServices.Marshal.PtrToStringBSTR(bstr) ?? string.Empty;
+        }
+        finally
+        {
+            if (bstr != IntPtr.Zero)
+            {
+                System.Runtime.InteropServices.Marshal.ZeroFreeBSTR(bstr);
+            }
         }
     }
 }

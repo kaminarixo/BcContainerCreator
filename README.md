@@ -150,10 +150,19 @@ dotnet publish src/BcContainerCreator.App `
 
 ### Bundle-Installer (Setup.exe)
 
+Skript läuft sowohl unter Windows PowerShell 5.1 als auch unter PowerShell 7+:
+
 ```powershell
+# Windows PowerShell 5.1 (auf jedem Windows 10/11 vorhanden):
+powershell -NoProfile -ExecutionPolicy Bypass -File build/build-installer.ps1
+
+# Oder PowerShell 7+, falls installiert:
 pwsh build/build-installer.ps1
+
 # optional: -Version 1.2.3
 ```
+
+Voraussetzung: [Inno Setup 6](https://jrsoftware.org/isinfo.php) muss installiert sein (`winget install --exact --id JRSoftware.InnoSetup --silent`). PDB- und XML-Dokumentationsdateien werden vor dem Bundling automatisch entfernt.
 
 → `dist/BcContainerCreator-Setup-<version>.exe` (≈12 MB)
 

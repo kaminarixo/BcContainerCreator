@@ -182,7 +182,7 @@ public class ContainerServiceTests
     {
         var sut = CreateSut(out var runner);
         runner.WhenScriptContains("New-BcContainer", () =>
-            new Core.PowerShell.PSResult(false, Array.Empty<System.Management.Automation.PSObject>(),
+            new Core.PowerShell.PSResult(false, Array.Empty<string>(),
                 Array.Empty<string>(), TimeSpan.Zero, WasCancelled: true));
 
         var reports = new List<string>();

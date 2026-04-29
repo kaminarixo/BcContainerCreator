@@ -23,7 +23,8 @@ public sealed class SetupService : ISetupService
         ["install-bccontainerhelper"] = "BcContainerHelper aus PSGallery installieren",
         ["remove-legacy-module"] = "Legacy-Modul navcontainerhelper entfernen",
         ["switch-to-windows-mode"] = "Docker auf Windows-Container-Modus umschalten",
-        ["install-docker-desktop"] = "Docker Desktop installieren (via winget)"
+        ["install-docker-desktop"] = "Docker Desktop installieren (via winget)",
+        ["fix-bccontainerhelper-permissions"] = "BcContainerHelper-Rechte (ProgramData, hosts, Docker) reparieren"
     };
 
     public SetupService(
@@ -51,6 +52,11 @@ public sealed class SetupService : ISetupService
             return await InstallDockerDesktopElevatedAsync(cancellationToken).ConfigureAwait(false);
         }
 
+        if (fixId == "fix-bccontainerhelper-permissions")
+        {
+            return await FixBcContainerHelperPermissionsElevatedAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         if (fixId == "switch-to-windows-mode")
         {
             // DockerCli.exe -SwitchDaemon braucht Admin. Wenn die App selbst als
@@ -76,6 +82,52 @@ public sealed class SetupService : ISetupService
             _logger.LogError("Fix {FixId} fehlgeschlagen: {Errors}", fixId, string.Join("; ", result.Errors));
         }
         return result.Success;
+    }
+
+    /// <summary>
+    /// Ruft <c>Check-BcContainerHelperPermissions -Fix</c> elevated auf. Das
+    /// Cmdlet repariert ACLs auf <c>%ProgramData%\BcContainerHelper</c>, fügt
+    /// den User der docker-Group hinzu und gibt ihm hosts-Schreibrechte.
+    /// Skript-Datei wird nach Lauf wieder gelöscht; ein Read-Host hält das
+    /// Fenster auf, damit der User Output sehen kann.
+    /// </summary>
+    private async Task<bool> FixBcContainerHelperPermissionsElevatedAsync(CancellationToken ct)
+    {
+        var tempScript = Path.Combine(Path.GetTempPath(), $"bccl-bcch-perms-{Guid.NewGuid():N}.ps1");
+        const string script = """
+            $ErrorActionPreference = 'Stop'
+            Write-Host '== BC Container Creator: Check-BcContainerHelperPermissions -Fix =='
+            try {
+                Import-Module BcContainerHelper -ErrorAction Stop
+                if (-not (Get-Command Check-BcContainerHelperPermissions -ErrorAction SilentlyContinue)) {
+                    Write-Host 'Cmdlet Check-BcContainerHelperPermissions nicht verfuegbar.'
+                    Read-Host 'Enter zum Beenden'
+                    exit 2
+                }
+                Check-BcContainerHelperPermissions -Fix
+                Write-Host ''
+                Write-Host 'Fertig. Eventuell ist eine Neuanmeldung noetig (docker-users-Group).'
+            } catch {
+                Write-Host ('Fehler: ' + $_.Exception.Message)
+                Read-Host 'Enter zum Beenden'
+                exit 1
+            }
+            Read-Host 'Enter zum Schliessen'
+            exit 0
+            """;
+        try
+        {
+            await File.WriteAllTextAsync(tempScript, script, ct).ConfigureAwait(false);
+            return await _elevation.RunElevatedAsync(
+                fileName: "powershell.exe",
+                arguments: $"-NoProfile -ExecutionPolicy Bypass -File \"{tempScript}\"",
+                timeout: TimeSpan.FromMinutes(3),
+                cancellationToken: ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            try { File.Delete(tempScript); } catch { /* nicht kritisch */ }
+        }
     }
 
     private async Task<bool> InstallDockerDesktopElevatedAsync(CancellationToken ct)
