@@ -1,0 +1,84 @@
+name: Release
+
+# Triggert auf Tag-Push (v1.2.3) oder manuell via "Run workflow".
+# Baut Single-File-Publish + Inno-Setup-Installer auf einem Windows-Runner
+# (Inno Setup 6 ist in 'windows-latest' vorinstalliert) und legt das
+# Setup-EXE als Asset an einem GitHub-Release ab.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version ohne v-Prefix (z. B. 1.0.1) — nur für manuellen Lauf.'
+        required: true
+        default: '1.0.1'
+
+permissions:
+  contents: write   # für gh release create
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # global.json pinnt die exakte SDK-Version. setup-dotnet liest das.
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Version ermitteln
+        id: ver
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -like 'refs/tags/v*') {
+            $v = $env:GITHUB_REF -replace 'refs/tags/v',''
+          } else {
+            $v = '${{ github.event.inputs.version }}'
+          }
+          if (-not $v) { throw 'Version konnte nicht ermittelt werden.' }
+          Write-Host "Version: $v"
+          "version=$v" | Out-File $env:GITHUB_OUTPUT -Append
+
+      - name: Restore + Tests
+        shell: pwsh
+        run: |
+          dotnet restore
+          dotnet build --no-restore -c Release
+          dotnet test --no-build -c Release --verbosity minimal
+
+      - name: Installer bauen (Publish + ISCC)
+        shell: pwsh
+        run: |
+          .\build\build-installer.ps1 -Version '${{ steps.ver.outputs.version }}'
+
+      - name: Setup-Asset prüfen
+        shell: pwsh
+        run: |
+          $f = "dist/BcContainerCreator-Setup-${{ steps.ver.outputs.version }}.exe"
+          if (-not (Test-Path $f)) { throw "$f wurde nicht gefunden." }
+          $size = [Math]::Round((Get-Item $f).Length / 1MB, 1)
+          Write-Host "Setup-Größe: $size MB"
+
+      # Nur bei Tag-Push einen GitHub-Release erstellen. Bei manuellem Lauf
+      # bleibt das Asset als Artifact (siehe upload-artifact unten).
+      - name: GitHub-Release erstellen
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "v${{ steps.ver.outputs.version }}"
+          $asset = "dist/BcContainerCreator-Setup-${{ steps.ver.outputs.version }}.exe"
+          gh release create "$tag" "$asset" `
+            --title "$tag" `
+            --generate-notes `
+            --verify-tag
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BcContainerCreator-Setup-${{ steps.ver.outputs.version }}
+          path: dist/BcContainerCreator-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 30
