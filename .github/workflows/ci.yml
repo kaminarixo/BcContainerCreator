@@ -1,0 +1,31 @@
+name: CI
+
+# Baut und testet jeden PR sowie Pushes auf main. Der Format-Check stellt
+# sicher, dass 'dotnet format' lokal gelaufen ist (CRLF/Style laut .editorconfig).
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # global.json pinnt die SDK-Version. setup-dotnet liest das.
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Format-Check
+        run: dotnet format --verify-no-changes --no-restore
+
+      - name: Build (Release)
+        run: dotnet build --no-restore -c Release
+
+      - name: Tests
+        run: dotnet test --no-build -c Release --verbosity minimal

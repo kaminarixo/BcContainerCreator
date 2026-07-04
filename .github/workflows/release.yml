@@ -38,6 +38,9 @@ jobs:
             $v = '${{ github.event.inputs.version }}'
           }
           if (-not $v) { throw 'Version konnte nicht ermittelt werden.' }
+          if ($v -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Ungültige Version '$v' — erwartet SemVer x.y.z (z. B. 1.0.3)."
+          }
           Write-Host "Version: $v"
           "version=$v" | Out-File $env:GITHUB_OUTPUT -Append
 

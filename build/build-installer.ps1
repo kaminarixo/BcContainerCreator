@@ -8,11 +8,12 @@
 
 .PARAMETER Version
     Optional — überschreibt die Version im .iss-Script via -DMyAppVersion.
-    Default: 1.0.0
+    Default: die <Version> aus BcContainerCreator.App.csproj (Single Source
+    of Truth — beim Release-Bump muss nur noch die csproj angefasst werden).
 #>
 [CmdletBinding()]
 param(
-    [string] $Version = '1.0.2'
+    [string] $Version
 )
 
 $ErrorActionPreference = 'Stop'
@@ -22,6 +23,17 @@ $appProject   = Join-Path $repoRoot 'src\BcContainerCreator.App'
 $publishDir   = Join-Path $repoRoot 'dist\publish'
 $issScript    = Join-Path $repoRoot 'installer\BcContainerCreator.iss'
 $distDir      = Join-Path $repoRoot 'dist'
+
+# Version aus der csproj lesen, wenn nicht explizit übergeben.
+if (-not $Version) {
+    $csprojPath = Join-Path $appProject 'BcContainerCreator.App.csproj'
+    $Version = ([xml](Get-Content -LiteralPath $csprojPath)).Project.PropertyGroup.Version |
+               Where-Object { $_ } | Select-Object -First 1
+    if (-not $Version) {
+        throw "Version konnte nicht aus $csprojPath gelesen werden."
+    }
+    Write-Host "Version aus csproj: $Version"
+}
 
 # 1. publish-Ordner sauber anlegen
 if (Test-Path $publishDir) {
