@@ -162,4 +162,51 @@ public class ContainerMetadataStoreTests : IDisposable
         sut.DecryptPassword(null).Should().BeNull();
         sut.DecryptPassword(Array.Empty<byte>()).Should().BeNull();
     }
+
+    [Fact]
+    public async Task LoadAsync_CorruptJson_ReturnsNullAndQuarantinesFile()
+    {
+        var sut = CreateSut();
+        var path = Path.Combine(_root, "broken.json");
+        await File.WriteAllTextAsync(path, "{ dies ist kein gültiges JSON ");
+
+        var loaded = await sut.LoadAsync("broken");
+
+        loaded.Should().BeNull();
+        File.Exists(path).Should().BeFalse("die korrupte Datei muss in Quarantäne verschoben sein");
+        File.Exists(path + ".corrupt").Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SaveAsync_OverExistingFile_ReplacesContentCompletely()
+    {
+        var sut = CreateSut();
+        await sut.SaveAsync(
+            "c1", DateTimeOffset.UtcNow, AuthType.NavUserPassword,
+            "erster-user", MakeSecureString("pwd-eins"),
+            ArtifactType.OnPrem, "DE", "26", null, "url-1");
+
+        await sut.SaveAsync(
+            "c1", DateTimeOffset.UtcNow, AuthType.Windows,
+            "zweiter-user", password: null,
+            ArtifactType.Sandbox, "W1", "latest", null, "url-2");
+
+        var loaded = await sut.LoadAsync("c1");
+        loaded.Should().NotBeNull();
+        loaded!.Username.Should().Be("zweiter-user");
+        loaded.AuthType.Should().Be(AuthType.Windows);
+        loaded.Country.Should().Be("W1");
+        loaded.PasswordCipher.Should().BeNull("der zweite Save hatte kein Passwort");
+        Directory.GetFiles(_root, "*.tmp").Should().BeEmpty("atomares Schreiben darf keine tmp-Dateien hinterlassen");
+    }
+
+    [Fact]
+    public void DecryptPassword_GarbageCipher_ReturnsNull()
+    {
+        // Zufällige Bytes sind kein gültiger DPAPI-Blob → CryptographicException
+        // wird intern gefangen und als null gemeldet, nicht geworfen.
+        var sut = CreateSut();
+        var garbage = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+        sut.DecryptPassword(garbage).Should().BeNull();
+    }
 }
