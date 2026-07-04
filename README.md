@@ -52,14 +52,14 @@ Entwickelt für Business-Central-Entwickler und Teams, die lokale BC-Container s
 
 ### Diagnose
 
-12 Voraussetzungs-Checks mit fixbaren Aktionen:
+13 Voraussetzungs-Checks mit fixbaren Aktionen:
 
 - Ausführungs-Kontext (Admin / Standard-User)
 - Windows-Edition (Pro/Enterprise/Education vs. Home)
 - PowerShell-Version + ExecutionPolicy
 - NuGet-Provider, PSGallery-Trust
 - Docker installiert / läuft / im Windows-Modus
-- BcContainerHelper-Modul installiert
+- BcContainerHelper-Modul installiert + Berechtigungen (ProgramData, hosts, docker-Group)
 - Kein konkurrierendes Legacy-Modul (`navcontainerhelper`)
 - Externer PowerShell- + BcContainerHelper-Smoke-Test (lädt das Modul in einem `powershell.exe`-Subprozess und ruft `Get-BcArtifactUrl` auf — wenn dieser Check grün ist, läuft auch `New-BcContainer` durch)
 
@@ -108,7 +108,7 @@ src/
     Services/                  DialogService, DispatcherProgress, PasswordBoxAssistant
 
 tests/
-  BcContainerCreator.Core.Tests/    35 xUnit-Tests
+  BcContainerCreator.Core.Tests/    xUnit-Test-Suite (Services, Runner, Store, Mapper)
 ```
 
 **Kern-Entscheidungen:**
@@ -116,7 +116,7 @@ tests/
 - **Externer PowerShell-Runner** — jedes Skript läuft in einem frischen `powershell.exe`-Subprozess (Windows PowerShell 5.1). BcContainerHelper benötigt Reflection-/`Add-Type`-Pfade, die unter einer eingebetteten SDK-Engine nicht zuverlässig funktionierten — Windows PowerShell ist hier die robustere Wahl.
 - **Kein sichtbares Konsolenfenster** — der Subprozess wird headless gestartet; stdout und stderr werden zeilenweise ausgelesen und in App-Logs sowie Live-Output gestreamt.
 - **Aufrufe werden serialisiert** — ein `SemaphoreSlim` stellt sicher, dass nur ein Skript zur gleichen Zeit läuft, sodass sich Ausgaben aus parallelen Aktionen (Diagnose, Create, List) nicht vermischen.
-- **Parameter-Übergabe per ACL-geschützter JSON-Datei** — Variablen (inkl. Passwörter) werden nie als Prozess-Argumente übergeben, sondern in eine temporäre Datei im User-Temp geschrieben, deren ACL auf den aktuellen User eingeschränkt wird; Passwörter selbst sind im Code `SecureString`.
+- **Parameter-Übergabe per JSON-Datei im User-only-Verzeichnis** — Variablen (inkl. Passwörter) werden nie als Prozess-Argumente übergeben, sondern in eine kurzlebige Datei unter `%LOCALAPPDATA%\BcContainerCreator\runtime` geschrieben. Die Default-ACL von `%LOCALAPPDATA%` beschränkt den Zugriff auf den aktuellen User — ohne Race zwischen Datei-Anlage und ACL-Setzen; Passwörter selbst sind im Code `SecureString`.
 - **Container-Metadaten verschlüsselt** — gespeicherte Passwörter im Metadata-Store sind via DPAPI (CurrentUser-Scope) verschlüsselt und nur durch den anlegenden Windows-User lesbar.
 - **Stufenbasierter Progress** — `New-BcContainer` liefert keine Prozent-API; bekannte Statuszeilen aus dem BcContainerHelper-Output werden auf grobe Etappen (10 / 15 / 40 / 55 / 70 / 85 / 100 %) gemappt.
 - **`asInvoker`-Manifest** — App läuft als Standard-User. Admin nur on-demand über `Verb=runas` (z. B. Docker-Modus-Switch).
