@@ -8,7 +8,11 @@ namespace BcContainerCreator.Core.Containers;
 /// </summary>
 public interface IContainerMetadataStore
 {
-    /// <summary>Speichert Metadaten zu einem Container. Passwort wird DPAPI-verschlüsselt.</summary>
+    /// <summary>
+    /// Speichert Metadaten zu einem Container. Passwort wird DPAPI-verschlüsselt.
+    /// <paramref name="createdBy"/> ist das Windows-Konto (DOMAIN\User), an das
+    /// die DPAPI-Verschlüsselung faktisch gebunden ist.
+    /// </summary>
     Task SaveAsync(
         string containerName,
         DateTimeOffset createdAt,
@@ -20,6 +24,7 @@ public interface IContainerMetadataStore
         string versionSelector,
         string? resolvedBuild,
         string webClientUrl,
+        string? createdBy = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>Liest die Metadaten zu einem Container, oder null wenn nicht vorhanden.</summary>

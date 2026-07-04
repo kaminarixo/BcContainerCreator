@@ -14,6 +14,13 @@
         WindowState="Maximized"
         Background="{StaticResource Bg}">
 
+    <!-- Windows-Taskbar-Fortschritt während einer Container-Erstellung:
+         Marquee bis zur ersten erkannten Stage, danach echter Fortschritt. -->
+    <Window.TaskbarItemInfo>
+        <TaskbarItemInfo ProgressState="{Binding CreateContainer.TaskbarProgressState}"
+                         ProgressValue="{Binding CreateContainer.TaskbarProgressValue}" />
+    </Window.TaskbarItemInfo>
+
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="240" />
@@ -105,16 +112,77 @@
                     <RadioButton GroupName="MainNav"
                                  Style="{StaticResource NavItem}"
                                  IsChecked="{Binding SelectedTabIndex, Converter={StaticResource IntEquals}, ConverterParameter=1, Mode=TwoWay}">
-                        <StackPanel Orientation="Horizontal">
-                            <Path Width="16" Height="16"
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Path Grid.Column="0" Width="16" Height="16"
                                   Stretch="Uniform"
                                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
                                   StrokeThickness="1.8"
                                   StrokeStartLineCap="Round"
                                   StrokeEndLineCap="Round"
                                   Data="M 12 5 L 12 19 M 5 12 L 19 12" />
-                            <TextBlock Text="Container erstellen" Margin="10,0,0,0" VerticalAlignment="Center" />
-                        </StackPanel>
+                            <TextBlock Grid.Column="1" Text="Container erstellen" Margin="10,0,0,0" VerticalAlignment="Center" />
+                            <!-- Busy-Badge: sichtbar solange eine Erstellung läuft — pulsierender
+                                 Punkt plus Fortschritt, damit der Run auch von anderen Tabs aus
+                                 sichtbar bleibt. -->
+                            <Border Grid.Column="2"
+                                    Style="{StaticResource Badge}"
+                                    Background="{StaticResource InfoSoft}"
+                                    BorderBrush="Transparent"
+                                    Visibility="{Binding CreateContainer.IsRunning, Converter={StaticResource BoolToVis}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse Width="6" Height="6"
+                                             Fill="{StaticResource Info}"
+                                             VerticalAlignment="Center"
+                                             Margin="0,0,5,0">
+                                        <!-- Puls startet mit IsRunning und stoppt sauber am Run-Ende —
+                                             ein Loaded-EventTrigger würde die Animation dauerhaft
+                                             (auch unsichtbar) weiterlaufen lassen. -->
+                                        <Ellipse.Style>
+                                            <Style TargetType="Ellipse">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding CreateContainer.IsRunning}" Value="True">
+                                                        <DataTrigger.EnterActions>
+                                                            <BeginStoryboard x:Name="BusyPulse">
+                                                                <Storyboard>
+                                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                     From="1.0" To="0.25"
+                                                                                     Duration="0:0:0.8"
+                                                                                     AutoReverse="True"
+                                                                                     RepeatBehavior="Forever" />
+                                                                </Storyboard>
+                                                            </BeginStoryboard>
+                                                        </DataTrigger.EnterActions>
+                                                        <DataTrigger.ExitActions>
+                                                            <StopStoryboard BeginStoryboardName="BusyPulse" />
+                                                        </DataTrigger.ExitActions>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Ellipse.Style>
+                                    </Ellipse>
+                                    <TextBlock Foreground="{StaticResource Info}">
+                                        <!-- Text via Style-Setter statt lokal, damit der Trigger
+                                             (Marquee-Phase → "läuft" statt irreführendem "0 %")
+                                             ihn überschreiben kann. -->
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource BadgeText}">
+                                                <Setter Property="Text" Value="{Binding CreateContainer.CreateProgressPercent, StringFormat={}{0} %}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding CreateContainer.IsCreateProgressIndeterminate}" Value="True">
+                                                        <Setter Property="Text" Value="läuft" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
                     </RadioButton>
 
                     <RadioButton GroupName="MainNav"

@@ -74,6 +74,7 @@ public sealed class ContainerMetadataStore : IContainerMetadataStore
         string versionSelector,
         string? resolvedBuild,
         string webClientUrl,
+        string? createdBy = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(containerName);
@@ -89,7 +90,8 @@ public sealed class ContainerMetadataStore : IContainerMetadataStore
             Country: country,
             VersionSelector: versionSelector,
             ResolvedBuild: resolvedBuild,
-            WebClientUrl: webClientUrl);
+            WebClientUrl: webClientUrl,
+            CreatedBy: createdBy);
 
         var path = PathFor(containerName);
         var json = JsonSerializer.Serialize(meta, JsonOptions);

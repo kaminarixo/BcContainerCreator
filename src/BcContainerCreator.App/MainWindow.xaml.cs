@@ -56,7 +56,16 @@ public partial class MainWindow : Window
     {
         var contextSuffix = AdminContext.IsCurrentProcessAdmin ? "Admin-Modus" : "Standard-User";
         TitleText.Text = $"BC Container Creator — {contextSuffix}";
-        UserNameLabel.Text = Environment.UserName;
+
+        // Domänen-Konto als DOMAIN\User anzeigen; bei lokalen Konten ist die
+        // "Domäne" der Rechnername — dann reicht der Username.
+        var isDomainAccount = !string.Equals(
+            Environment.UserDomainName, Environment.MachineName, StringComparison.OrdinalIgnoreCase);
+        UserNameLabel.Text = isDomainAccount
+            ? $@"{Environment.UserDomainName}\{Environment.UserName}"
+            : Environment.UserName;
+        UserNameLabel.ToolTip =
+            "Angemeldetes Windows-Konto. Gespeicherte Container-Passwörter sind per DPAPI an dieses Konto gebunden.";
 
         var asm = Assembly.GetExecutingAssembly();
         var ver = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion

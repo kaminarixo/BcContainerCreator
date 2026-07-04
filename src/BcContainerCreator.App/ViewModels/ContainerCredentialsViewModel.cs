@@ -25,7 +25,20 @@ public sealed partial class ContainerCredentialsViewModel : ObservableObject
     public string CreatedAtDisplay { get; }
     public string MissingMessage { get; }
 
+    /// <summary>Windows-Konto, das den Container erstellt hat (leer bei Alt-Metadaten).</summary>
+    public string CreatedBy { get; }
+
     public bool HasPassword => !string.IsNullOrEmpty(PasswordPlain);
+
+    /// <summary>
+    /// True, wenn ein verschlüsseltes Passwort existiert, aber unter dem
+    /// aktuellen Windows-Konto nicht entschlüsselbar ist (DPAPI-CurrentUser-
+    /// Bindung an das Erstell-Konto).
+    /// </summary>
+    public bool IsPasswordLocked { get; }
+
+    /// <summary>Erklärender Hinweis, wenn <see cref="IsPasswordLocked"/> true ist.</summary>
+    public string PasswordLockedMessage { get; }
 
     private DispatcherTimer? _clipboardClearTimer;
     private string? _lastCopiedPassword;
@@ -58,6 +71,9 @@ public sealed partial class ContainerCredentialsViewModel : ObservableObject
             Country = string.Empty;
             VersionSelector = string.Empty;
             CreatedAtDisplay = string.Empty;
+            CreatedBy = string.Empty;
+            IsPasswordLocked = false;
+            PasswordLockedMessage = string.Empty;
             MissingMessage = "Dieser Container wurde nicht mit dem BC Container Creator erstellt — daher sind keine gespeicherten Zugangsdaten verfügbar. Web-Client-URL ist trotzdem verlinkt.";
             return;
         }
@@ -72,7 +88,17 @@ public sealed partial class ContainerCredentialsViewModel : ObservableObject
             ? metadata.VersionSelector
             : $"{metadata.VersionSelector}  ({metadata.ResolvedBuild})";
         CreatedAtDisplay = metadata.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+        CreatedBy = metadata.CreatedBy ?? string.Empty;
         MissingMessage = string.Empty;
+
+        // Cipher vorhanden, aber Decrypt lieferte nichts → DPAPI-Konto-Mismatch.
+        // Statt das Passwort kommentarlos wegzulassen, dem User erklären warum.
+        IsPasswordLocked = metadata.PasswordCipher is { Length: > 0 } && string.IsNullOrEmpty(decryptedPassword);
+        PasswordLockedMessage = !IsPasswordLocked
+            ? string.Empty
+            : string.IsNullOrEmpty(CreatedBy)
+                ? "Das gespeicherte Passwort ist an das Windows-Konto gebunden, das den Container erstellt hat, und kann unter dem aktuellen Konto nicht entschlüsselt werden."
+                : $"Das gespeicherte Passwort ist an das Windows-Konto „{CreatedBy}“ gebunden und kann unter dem aktuellen Konto nicht entschlüsselt werden.";
     }
 
     [RelayCommand]
