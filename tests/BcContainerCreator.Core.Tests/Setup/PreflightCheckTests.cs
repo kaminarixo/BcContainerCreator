@@ -44,12 +44,13 @@ public class PreflightCheckTests
     {
         var (sut, _, _) = CreateSut();
         var reported = new List<CheckResult>();
-        var progress = new Progress<CheckResult>(reported.Add);
+        // SyncProgress statt Progress<T>: deterministisch, kein ThreadPool-Race
+        // (Progress<T> postet Reports asynchron — auf CI-Runnern verlor die
+        // Assertion das Race trotz Delay-Workaround).
+        var progress = new SyncProgress<CheckResult>(reported.Add);
 
         var results = await sut.RunAllAsync(progress);
 
-        // Progress-Reports landen über SyncContext eventuell verzögert.
-        await Task.Delay(80);
         reported.Should().HaveCount(results.Count);
     }
 

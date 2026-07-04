@@ -241,7 +241,8 @@ public class ContainerServiceTests
                 Array.Empty<string>(), TimeSpan.Zero, WasCancelled: true));
 
         var reports = new List<string>();
-        var progress = new Progress<string>(reports.Add);
+        // SyncProgress statt Progress<T>: deterministisch, kein ThreadPool-Race.
+        var progress = new SyncProgress<string>(reports.Add);
 
         var req = new ContainerCreateRequest(
             "c", ArtifactType.OnPrem, "DE", "latest",
@@ -250,8 +251,6 @@ public class ContainerServiceTests
         var result = await sut.CreateContainerAsync(req, progress);
 
         result.WasCancelled.Should().BeTrue();
-        // Progress wird auf einem ThreadPool-Thread gepostet — kurz abwarten.
-        await Task.Delay(50);
         reports.Should().Contain(s => s == "Abgebrochen.");
     }
 
