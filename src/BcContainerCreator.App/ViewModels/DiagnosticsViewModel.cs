@@ -41,6 +41,12 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
     public int WarnCount => Checks.Count(c => c.Status == Core.Models.CheckStatus.Warning);
     public int FailCount => Checks.Count(c => c.Status == Core.Models.CheckStatus.Failed);
 
+    /// <summary>
+    /// Gesamtzahl der Preflight-Checks — dynamisch aus dem PreflightCheck,
+    /// damit der Header-Text nicht veraltet, wenn Checks dazukommen.
+    /// </summary>
+    public int TotalCheckCount => _preflight.GetCheckIds().Count;
+
     public DiagnosticsViewModel(IPreflightCheck preflight, ISetupService setup, ILogger<DiagnosticsViewModel> logger)
     {
         _preflight = preflight;
