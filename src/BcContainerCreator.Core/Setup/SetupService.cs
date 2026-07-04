@@ -28,6 +28,10 @@ public sealed class SetupService : ISetupService
         ["fix-bccontainerhelper-permissions"] = "BcContainerHelper-Rechte (ProgramData, hosts, Docker) reparieren"
     };
 
+    /// <summary>
+    /// Erzeugt den Service (DI). <paramref name="isCurrentProcessAdmin"/> ist
+    /// ein Test-Hook — Default ist die echte Admin-Probe.
+    /// </summary>
     public SetupService(
         IPowerShellRunner runner,
         IDockerService docker,
@@ -46,8 +50,10 @@ public sealed class SetupService : ISetupService
         _isCurrentProcessAdmin = isCurrentProcessAdmin ?? (() => AdminContext.IsCurrentProcessAdmin);
     }
 
+    /// <inheritdoc />
     public IReadOnlyDictionary<string, string> AvailableFixes => Fixes;
 
+    /// <inheritdoc />
     public async Task<bool> ApplyFixAsync(string fixId, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(fixId);

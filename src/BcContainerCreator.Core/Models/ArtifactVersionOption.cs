@@ -10,6 +10,7 @@ public sealed record ArtifactVersionOption(
     string Selector,
     string? LatestBuild)
 {
+    /// <summary>Anzeige-Text für die UI: Selector, ergänzt um den aufgelösten Build.</summary>
     public string Display => string.IsNullOrEmpty(LatestBuild)
         ? Selector
         : $"{Selector}  —  {LatestBuild}";

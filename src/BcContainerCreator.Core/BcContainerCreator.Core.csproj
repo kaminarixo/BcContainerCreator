@@ -6,7 +6,6 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
     <RootNamespace>BcContainerCreator.Core</RootNamespace>
   </PropertyGroup>
 

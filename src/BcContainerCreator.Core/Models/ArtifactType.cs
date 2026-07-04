@@ -6,6 +6,9 @@ namespace BcContainerCreator.Core.Models;
 /// </summary>
 public enum ArtifactType
 {
+    /// <summary>Klassisches On-Premise-Artifact (<c>-type OnPrem</c>).</summary>
     OnPrem,
+
+    /// <summary>Cloud-/Sandbox-Artifact (<c>-type Sandbox</c>).</summary>
     Sandbox
 }

@@ -4,15 +4,22 @@ using Microsoft.Extensions.Logging;
 
 namespace BcContainerCreator.Core.Setup;
 
+/// <summary>
+/// Startet Prozesse elevated über <c>Verb=runas</c> (UAC-Prompt). Ein vom
+/// User abgebrochener UAC-Prompt gilt als reguläres "nicht ausgeführt"
+/// (false), nicht als Fehler.
+/// </summary>
 public sealed class ElevationService : IElevationService
 {
     private readonly ILogger<ElevationService> _logger;
 
+    /// <summary>Erzeugt den Service mit Logger (DI).</summary>
     public ElevationService(ILogger<ElevationService> logger)
     {
         _logger = logger;
     }
 
+    /// <inheritdoc />
     public async Task<bool> RunElevatedAsync(
         string fileName,
         string arguments,

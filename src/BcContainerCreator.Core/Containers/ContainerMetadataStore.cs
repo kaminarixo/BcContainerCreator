@@ -42,6 +42,7 @@ public sealed class ContainerMetadataStore : IContainerMetadataStore
     private readonly ILogger<ContainerMetadataStore> _logger;
     private readonly string _root;
 
+    /// <summary>Produktiv-Konstruktor — legt Dateien unter <c>%APPDATA%</c> ab (DI).</summary>
     public ContainerMetadataStore(ILogger<ContainerMetadataStore> logger)
         : this(logger, DefaultRoot())
     {
@@ -61,6 +62,7 @@ public sealed class ContainerMetadataStore : IContainerMetadataStore
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "BcContainerCreator", "containers");
 
+    /// <inheritdoc />
     public async Task SaveAsync(
         string containerName,
         DateTimeOffset createdAt,
@@ -108,6 +110,7 @@ public sealed class ContainerMetadataStore : IContainerMetadataStore
         _logger.LogInformation("Metadaten gespeichert: {Path}", path);
     }
 
+    /// <inheritdoc />
     public async Task<ContainerMetadata?> LoadAsync(string containerName, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(containerName);
@@ -151,6 +154,7 @@ public sealed class ContainerMetadataStore : IContainerMetadataStore
         }
     }
 
+    /// <inheritdoc />
     public string? DecryptPassword(byte[]? cipher)
     {
         if (cipher is null || cipher.Length == 0) return null;
@@ -175,6 +179,7 @@ public sealed class ContainerMetadataStore : IContainerMetadataStore
         }
     }
 
+    /// <inheritdoc />
     public Task DeleteAsync(string containerName, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(containerName);

@@ -27,6 +27,7 @@ public sealed class ContainerService : IContainerService
     private readonly IContainerMetadataStore _metadata;
     private readonly ILogger<ContainerService> _logger;
 
+    /// <summary>Erzeugt den Service mit Runner, Metadata-Store und Logger (DI).</summary>
     public ContainerService(IPowerShellRunner runner, IContainerMetadataStore metadata, ILogger<ContainerService> logger)
     {
         _runner = runner;
@@ -34,6 +35,7 @@ public sealed class ContainerService : IContainerService
         _logger = logger;
     }
 
+    /// <inheritdoc />
     public string BuildCreateScript(ContainerCreateRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -125,6 +127,7 @@ public sealed class ContainerService : IContainerService
         return sb.ToString();
     }
 
+    /// <inheritdoc />
     public async Task<PSResult> CreateContainerAsync(
         ContainerCreateRequest request,
         IProgress<string>? progress = null,
@@ -204,6 +207,7 @@ public sealed class ContainerService : IContainerService
         return result;
     }
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<ArtifactVersionOption>> GetVersionOptionsAsync(
         ArtifactType type,
         string country,
@@ -281,6 +285,7 @@ public sealed class ContainerService : IContainerService
         return withLatest;
     }
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<ContainerInfo>> ListContainersAsync(CancellationToken cancellationToken = default)
     {
         // 'docker ps -a --format json' liefert pro Zeile EIN JSON-Objekt
@@ -335,6 +340,7 @@ public sealed class ContainerService : IContainerService
         return containers;
     }
 
+    /// <inheritdoc />
     public async Task<bool> StartContainerAsync(string name, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -344,6 +350,7 @@ public sealed class ContainerService : IContainerService
         return result.Success;
     }
 
+    /// <inheritdoc />
     public async Task<bool> StopContainerAsync(string name, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -353,6 +360,7 @@ public sealed class ContainerService : IContainerService
         return result.Success;
     }
 
+    /// <inheritdoc />
     public async Task<bool> RemoveContainerAsync(string name, bool force = true, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -369,6 +377,7 @@ public sealed class ContainerService : IContainerService
         return ok;
     }
 
+    /// <inheritdoc />
     public async Task<string> GetContainerLogsAsync(string name, int tail = 1000, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
