@@ -13,7 +13,7 @@ public class ContainerCreateProgressMapperTests
 {
     [Theory]
     [InlineData("BcContainerHelper version 6.1.12 wurde geladen", 10, "BcContainerHelper geladen")]
-    [InlineData("Artifact-URL: https://bcartifacts.azureedge.net/onprem/28.0.46665.49591/de", 15, "Artifact-URL ermittelt")]
+    [InlineData("Artifact-URL: https://bcartifacts.blob.core.windows.net/onprem/28.0.46665.49591/de", 15, "Artifact-URL ermittelt")]
     [InlineData("Pulling image mcr.microsoft.com/businesscentral", 40, "Image-Download läuft")]
     [InlineData("Creating Container bcdev", 55, "Container wird erstellt")]
     [InlineData("Starting Container bcdev", 70, "Container wird gestartet")]

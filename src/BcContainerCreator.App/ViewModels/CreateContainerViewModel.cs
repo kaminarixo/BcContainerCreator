@@ -365,10 +365,19 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
         if (_outputBuffer.Length > OutputMaxChars)
         {
             // Vom Anfang abschneiden, damit das Ende (= aktueller Verlauf)
-            // sichtbar bleibt. Pufferung großzügig: erst kürzen, wenn deutlich
-            // über dem Cap, damit nicht jeder Append eine Re-Allocation auslöst.
-            var overflow = _outputBuffer.Length - OutputMaxChars;
-            _outputBuffer.Remove(0, overflow);
+            // sichtbar bleibt — und zwar an der nächsten Zeilengrenze, damit
+            // keine halben Zeilen (z. B. abgeschnittene Fehlermeldungen) im
+            // sichtbaren Output stehen.
+            var cut = _outputBuffer.Length - OutputMaxChars;
+            while (cut < _outputBuffer.Length && _outputBuffer[cut] != '\n')
+            {
+                cut++;
+            }
+            if (cut < _outputBuffer.Length)
+            {
+                cut++; // das '\n' selbst mit entfernen
+            }
+            _outputBuffer.Remove(0, cut);
             _outputBuffer.Insert(0, "[…früherer Output gekürzt…]" + Environment.NewLine);
         }
 
