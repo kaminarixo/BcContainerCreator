@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Threading;
 using BcContainerCreator.Core.Containers;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -25,6 +26,13 @@ public sealed partial class ContainerCredentialsViewModel : ObservableObject
     public string MissingMessage { get; }
 
     public bool HasPassword => !string.IsNullOrEmpty(PasswordPlain);
+
+    private DispatcherTimer? _clipboardClearTimer;
+    private string? _lastCopiedPassword;
+
+    /// <summary>Statushinweis unter dem Passwort-Feld (Copy/Auto-Clear).</summary>
+    [ObservableProperty]
+    private string _clipboardHint = string.Empty;
 
     [ObservableProperty]
     private bool _showPassword;
@@ -74,7 +82,48 @@ public sealed partial class ContainerCredentialsViewModel : ObservableObject
     private void CopyUsername() => CopyToClipboard(Username);
 
     [RelayCommand]
-    private void CopyPassword() => CopyToClipboard(PasswordPlain);
+    private void CopyPassword()
+    {
+        if (string.IsNullOrEmpty(PasswordPlain)) return;
+        CopyToClipboard(PasswordPlain);
+
+        // Zwischenablage nach 30 s automatisch leeren — aber nur, wenn sie
+        // dann noch das Passwort enthält (fremde Inhalte nie überschreiben).
+        // Der Timer überlebt bewusst ein Schließen des Fensters: das Clipboard
+        // soll auch dann geleert werden. Er feuert genau einmal, stoppt sich
+        // selbst und gibt damit das VM frei — kein unbegrenzter Leak.
+        _lastCopiedPassword = PasswordPlain;
+        ClipboardHint = "Passwort kopiert — Zwischenablage wird in 30 s geleert.";
+        _clipboardClearTimer?.Stop();
+        _clipboardClearTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+        _clipboardClearTimer.Tick += (_, _) => ClearClipboardIfStillPassword();
+        _clipboardClearTimer.Start();
+    }
+
+    private void ClearClipboardIfStillPassword()
+    {
+        _clipboardClearTimer?.Stop();
+        _clipboardClearTimer = null;
+        try
+        {
+            if (_lastCopiedPassword is not null
+                && Clipboard.ContainsText()
+                && Clipboard.GetText() == _lastCopiedPassword)
+            {
+                Clipboard.Clear();
+                ClipboardHint = "Zwischenablage geleert.";
+            }
+            else
+            {
+                ClipboardHint = string.Empty;
+            }
+        }
+        catch
+        {
+            // Clipboard kann von einem anderen Prozess gesperrt sein — best effort.
+        }
+        _lastCopiedPassword = null;
+    }
 
     [RelayCommand]
     private void OpenUrl()

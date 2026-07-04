@@ -4,15 +4,27 @@ using BcContainerCreator.Core.PowerShell;
 namespace BcContainerCreator.Core.Containers;
 
 /// <summary>
-/// Container-Operationen (Phase 1: nur Erstellung + Versions-Auflistung).
+/// Container-Operationen: Erstellung, Versions-Auflistung und Verwaltung
+/// (Liste, Start, Stop, Entfernen, Logs).
 /// </summary>
 public interface IContainerService
 {
+    /// <summary>
+    /// Erstellt einen BC-Container via <c>New-BcContainer</c>. Streamt den
+    /// PowerShell-Output zeilenweise über <paramref name="progress"/> und
+    /// persistiert bei Erfolg die Container-Metadaten (inkl. DPAPI-verschlüsseltem
+    /// Passwort) im Metadata-Store.
+    /// </summary>
     Task<PSResult> CreateContainerAsync(
         ContainerCreateRequest request,
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Baut das <c>New-BcContainer</c>-Skript für einen Request — ohne es
+    /// auszuführen. Wirft <see cref="ArgumentException"/> bei ungültigen
+    /// Eingaben (Containername, Country, Version).
+    /// </summary>
     string BuildCreateScript(ContainerCreateRequest request);
 
     /// <summary>

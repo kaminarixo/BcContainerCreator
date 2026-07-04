@@ -103,6 +103,21 @@
                             <TextBox Grid.Column="0" Text="{Binding PasswordDisplay, Mode=OneWay}" IsReadOnly="True" FontFamily="{StaticResource MonoFont}" />
                             <Button Grid.Column="1" Content="Kopieren" Margin="6,0,0,0" Command="{Binding CopyPasswordCommand}" />
                         </Grid>
+                        <TextBlock Text="{Binding ClipboardHint}"
+                                   FontSize="11"
+                                   Foreground="{StaticResource TextMuted}"
+                                   Margin="0,4,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ClipboardHint}" Value="">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
                     </StackPanel>
                 </Border>
 

@@ -8,7 +8,9 @@ namespace BcContainerCreator.Core.PowerShell;
 /// <param name="Errors">stderr-Zeilen + Fehler aus dem Wrapper-Catch.</param>
 /// <param name="Duration">Gesamtlaufzeit.</param>
 /// <param name="WasCancelled">Per <see cref="System.Threading.CancellationToken"/> abgebrochen.</param>
-/// <param name="ExitCode">Roh-Exit-Code des powershell.exe-Prozesses (oder -1 bei Process-Start-Fehler).</param>
+/// <param name="ExitCode">Roh-Exit-Code des powershell.exe-Prozesses. Nur aussagekräftig,
+/// wenn <paramref name="Success"/> false ist: Fehlerpfade setzen -1 (Process-Start-Fehler,
+/// Abbruch vor Start), das der Default 0 nicht abbildet.</param>
 public sealed record PSResult(
     bool Success,
     IReadOnlyList<string> Objects,

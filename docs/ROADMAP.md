@@ -60,6 +60,7 @@ Geplante und mögliche Verteilungsoptionen:
 - Portable ZIP-Version ohne Installer
 - MSI-Installer als spätere Option
 - Release Notes direkt in der App anzeigen
+- Code-Signing des Installers (erfordert Zertifikat bzw. Azure Trusted Signing)
 
 ## Container Management
 

@@ -38,19 +38,20 @@ public sealed class PowerShellRunner : IPowerShellRunner
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly string _runtimeDir;
 
+    /// <inheritdoc />
     public event EventHandler<PowerShellOutputEventArgs>? OutputReceived;
 
+    /// <summary>Erzeugt den Runner und stellt das Runtime-Verzeichnis sicher (DI).</summary>
     public PowerShellRunner(ILogger<PowerShellRunner> logger)
     {
         _logger = logger;
-        _runtimeDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "BcContainerCreator", "runtime");
-        Directory.CreateDirectory(_runtimeDir);
+        _runtimeDir = RuntimePaths.GetRuntimeDirectory();
     }
 
+    /// <inheritdoc />
     public Task InitializeAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
+    /// <inheritdoc />
     public async Task<PSResult> ExecuteAsync(
         string script,
         IDictionary<string, object?>? variables = null,
@@ -363,6 +364,7 @@ public sealed class PowerShellRunner : IPowerShellRunner
         }
     }
 
+    /// <inheritdoc />
     public ValueTask DisposeAsync()
     {
         _gate.Dispose();

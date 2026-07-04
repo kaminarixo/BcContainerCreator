@@ -14,12 +14,14 @@ public sealed class DockerService : IDockerService
     private readonly IPowerShellRunner _runner;
     private readonly ILogger<DockerService> _logger;
 
+    /// <summary>Erzeugt den Service mit Runner und Logger (DI).</summary>
     public DockerService(IPowerShellRunner runner, ILogger<DockerService> logger)
     {
         _runner = runner;
         _logger = logger;
     }
 
+    /// <inheritdoc />
     public async Task<bool> IsInstalledAsync(CancellationToken cancellationToken = default)
     {
         // Get-Command wirft nicht, liefert null → robust prüfbar.
@@ -35,6 +37,7 @@ public sealed class DockerService : IDockerService
         return result.Objects.Any(o => string.Equals(o, "yes", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <inheritdoc />
     public async Task<bool> IsRunningAsync(CancellationToken cancellationToken = default)
     {
         // 'docker info' wirft non-zero, wenn der Daemon nicht erreichbar ist.
@@ -47,6 +50,7 @@ public sealed class DockerService : IDockerService
         return result.Success;
     }
 
+    /// <inheritdoc />
     public async Task<ContainerMode> GetContainerModeAsync(CancellationToken cancellationToken = default)
     {
         // 'docker info -f' liefert OSType: 'windows' oder 'linux'. Eine Zeile stdout.
@@ -70,6 +74,7 @@ public sealed class DockerService : IDockerService
         };
     }
 
+    /// <inheritdoc />
     public async Task<bool> SwitchToWindowsModeAsync(CancellationToken cancellationToken = default)
     {
         const string script = """

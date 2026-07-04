@@ -39,4 +39,3 @@ dotnet_naming_style.underscore_camel_case.capitalization = camel_case
 
 # Quality
 dotnet_diagnostic.CA1062.severity = none
-dotnet_diagnostic.CS1591.severity = none

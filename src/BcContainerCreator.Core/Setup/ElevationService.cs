@@ -4,15 +4,30 @@ using Microsoft.Extensions.Logging;
 
 namespace BcContainerCreator.Core.Setup;
 
+/// <summary>
+/// Startet Prozesse elevated über <c>Verb=runas</c> (UAC-Prompt). Ein vom
+/// User abgebrochener UAC-Prompt gilt als reguläres "nicht ausgeführt"
+/// (false), nicht als Fehler.
+/// </summary>
 public sealed class ElevationService : IElevationService
 {
     private readonly ILogger<ElevationService> _logger;
+    private readonly Func<ProcessStartInfo, Process?> _startProcess;
 
-    public ElevationService(ILogger<ElevationService> logger)
+    /// <summary>
+    /// Erzeugt den Service (DI). <paramref name="startProcess"/> ist ein
+    /// Test-Hook analog zur Admin-Probe im SetupService — Default ist das
+    /// echte <see cref="Process.Start(ProcessStartInfo)"/>.
+    /// </summary>
+    public ElevationService(
+        ILogger<ElevationService> logger,
+        Func<ProcessStartInfo, Process?>? startProcess = null)
     {
         _logger = logger;
+        _startProcess = startProcess ?? Process.Start;
     }
 
+    /// <inheritdoc />
     public async Task<bool> RunElevatedAsync(
         string fileName,
         string arguments,
@@ -33,7 +48,7 @@ public sealed class ElevationService : IElevationService
 
         try
         {
-            using var process = Process.Start(psi);
+            using var process = _startProcess(psi);
             if (process is null)
             {
                 _logger.LogWarning("Process.Start lieferte null für {File}", fileName);

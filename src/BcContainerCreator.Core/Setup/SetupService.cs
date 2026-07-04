@@ -28,6 +28,10 @@ public sealed class SetupService : ISetupService
         ["fix-bccontainerhelper-permissions"] = "BcContainerHelper-Rechte (ProgramData, hosts, Docker) reparieren"
     };
 
+    /// <summary>
+    /// Erzeugt den Service (DI). <paramref name="isCurrentProcessAdmin"/> ist
+    /// ein Test-Hook — Default ist die echte Admin-Probe.
+    /// </summary>
     public SetupService(
         IPowerShellRunner runner,
         IDockerService docker,
@@ -46,8 +50,10 @@ public sealed class SetupService : ISetupService
         _isCurrentProcessAdmin = isCurrentProcessAdmin ?? (() => AdminContext.IsCurrentProcessAdmin);
     }
 
+    /// <inheritdoc />
     public IReadOnlyDictionary<string, string> AvailableFixes => Fixes;
 
+    /// <inheritdoc />
     public async Task<bool> ApplyFixAsync(string fixId, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(fixId);
@@ -100,7 +106,10 @@ public sealed class SetupService : ISetupService
     /// </summary>
     private async Task<bool> FixBcContainerHelperPermissionsElevatedAsync(CancellationToken ct)
     {
-        var tempScript = Path.Combine(Path.GetTempPath(), $"bccl-bcch-perms-{Guid.NewGuid():N}.ps1");
+        // Gleiches User-only-Runtime-Verzeichnis wie der PowerShellRunner —
+        // die Default-ACL umfasst Administrators, sodass der elevated Prozess
+        // das Skript per -File lesen kann (siehe RuntimePaths).
+        var tempScript = Path.Combine(RuntimePaths.GetRuntimeDirectory(), $"bccl-bcch-perms-{Guid.NewGuid():N}.ps1");
         const string script = """
             $ErrorActionPreference = 'Stop'
             Write-Host '== BC Container Creator: Check-BcContainerHelperPermissions -Fix =='
@@ -139,9 +148,10 @@ public sealed class SetupService : ISetupService
 
     private async Task<bool> InstallDockerDesktopElevatedAsync(CancellationToken ct)
     {
-        // Skript in temp ablegen, damit der elevated PowerShell-Process es per
-        // -File aufrufen kann — schöneres Logging als ein zusammengeklebter -Command.
-        var tempScript = Path.Combine(Path.GetTempPath(), $"bccl-docker-install-{Guid.NewGuid():N}.ps1");
+        // Skript im Runtime-Verzeichnis ablegen, damit der elevated
+        // PowerShell-Process es per -File aufrufen kann — schöneres Logging
+        // als ein zusammengeklebter -Command (ACL-Hinweis: siehe RuntimePaths).
+        var tempScript = Path.Combine(RuntimePaths.GetRuntimeDirectory(), $"bccl-docker-install-{Guid.NewGuid():N}.ps1");
         const string script = """
             $ErrorActionPreference = 'Stop'
             Write-Host '== BC Container Creator: Docker Desktop Setup =='

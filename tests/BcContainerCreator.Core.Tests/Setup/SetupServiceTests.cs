@@ -107,6 +107,63 @@ public class SetupServiceTests
         await act.Should().ThrowAsync<ArgumentException>().WithMessage("*Unbekannte Fix-ID*");
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task ApplyFixAsync_EmptyId_Throws(string fixId)
+    {
+        var (sut, _, _, _) = CreateSut();
+
+        var act = async () => await sut.ApplyFixAsync(fixId);
+
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
+
+    [Fact]
+    public async Task ApplyFixAsync_InstallDockerDesktop_ElevatesWingetScript()
+    {
+        var (sut, runner, _, elevation) = CreateSut();
+
+        var ok = await sut.ApplyFixAsync("install-docker-desktop");
+
+        ok.Should().BeTrue();
+        // Docker-Desktop-Install läuft immer elevated über powershell.exe
+        // (winget --scope machine braucht Admin) — nie durch den Runner.
+        elevation.Verify(e => e.RunElevatedAsync(
+            It.Is<string>(s => s.Equals("powershell.exe", StringComparison.OrdinalIgnoreCase)),
+            It.Is<string>(a => a.Contains("-File")),
+            It.IsAny<TimeSpan?>(),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+        runner.Calls.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ApplyFixAsync_ElevatedFixes_LeaveNoScriptFilesBehind()
+    {
+        // Die Elevated-Fixes legen ihr Skript im Runtime-Verzeichnis ab und
+        // müssen es im finally wieder löschen.
+        var (sut, _, _, _) = CreateSut();
+        var runtimeDir = Core.PowerShell.RuntimePaths.GetRuntimeDirectory();
+
+        await sut.ApplyFixAsync("install-docker-desktop");
+        await sut.ApplyFixAsync("fix-bccontainerhelper-permissions");
+
+        Directory.GetFiles(runtimeDir, "bccl-*.ps1").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ApplyFixAsync_RunnerFix_FailurePropagatesAsFalse()
+    {
+        var (sut, runner, _, _) = CreateSut();
+        runner.WhenScriptContains("Set-ExecutionPolicy", () =>
+            FakePowerShellRunner.Failure("Security error"));
+
+        var ok = await sut.ApplyFixAsync("set-execution-policy");
+
+        ok.Should().BeFalse();
+    }
+
     [Fact]
     public void AvailableFixes_ContainsAllKnownIds()
     {

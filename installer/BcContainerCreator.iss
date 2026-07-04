@@ -4,7 +4,13 @@
 ; ===========================================================================
 
 #define MyAppName        "BC Container Creator"
-#define MyAppVersion     "1.0.2"
+; Version kommt normalerweise von build-installer.ps1 via /DMyAppVersion
+; (gelesen aus der App-csproj). Der #ifndef-Guard ist Pflicht — ein
+; unbedingtes #define würde den CLI-Wert überschreiben. Der Fallback greift
+; nur bei direktem ISCC-Aufruf ohne Build-Skript.
+#ifndef MyAppVersion
+  #define MyAppVersion   "0.0.0"
+#endif
 #define MyAppPublisher   "Thomas Scharf"
 #define MyAppURL         "https://github.com/kaminarixo/BcContainerCreator"
 #define MyAppExeName     "BcContainerCreator.exe"

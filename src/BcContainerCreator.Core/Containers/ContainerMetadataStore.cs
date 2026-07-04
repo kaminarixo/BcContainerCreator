@@ -22,6 +22,14 @@ namespace BcContainerCreator.Core.Containers;
 /// </summary>
 public sealed class ContainerMetadataStore : IContainerMetadataStore
 {
+    /// <summary>
+    /// Statische Zusatz-Entropy für DPAPI. Bewusster Trade-off: Der Schutz
+    /// kommt aus dem CurrentUser-Scope (nur derselbe Windows-User kann
+    /// entschlüsseln); die Entropy verhindert lediglich, dass beliebige
+    /// DPAPI-Blobs anderer Programme mit unserem Store verwechselt werden.
+    /// Dynamische Entropy (z. B. Machine-ID) würde bestehende gespeicherte
+    /// Passwörter unlesbar machen — daher fix versioniert.
+    /// </summary>
     private static readonly byte[] DpapiEntropy = Encoding.UTF8.GetBytes("BcContainerCreator-v1");
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -34,6 +42,7 @@ public sealed class ContainerMetadataStore : IContainerMetadataStore
     private readonly ILogger<ContainerMetadataStore> _logger;
     private readonly string _root;
 
+    /// <summary>Produktiv-Konstruktor — legt Dateien unter <c>%APPDATA%</c> ab (DI).</summary>
     public ContainerMetadataStore(ILogger<ContainerMetadataStore> logger)
         : this(logger, DefaultRoot())
     {
@@ -53,6 +62,7 @@ public sealed class ContainerMetadataStore : IContainerMetadataStore
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "BcContainerCreator", "containers");
 
+    /// <inheritdoc />
     public async Task SaveAsync(
         string containerName,
         DateTimeOffset createdAt,
@@ -83,28 +93,68 @@ public sealed class ContainerMetadataStore : IContainerMetadataStore
 
         var path = PathFor(containerName);
         var json = JsonSerializer.Serialize(meta, JsonOptions);
-        await File.WriteAllTextAsync(path, json, cancellationToken).ConfigureAwait(false);
+
+        // Atomar schreiben: erst in .tmp, dann Move über das Ziel. Ein Crash
+        // mitten im Write hinterlässt so nie eine halb geschriebene (und damit
+        // korrupte) Metadaten-Datei — schlimmstenfalls bleibt die alte intakt.
+        var tmpPath = path + ".tmp";
+        try
+        {
+            await File.WriteAllTextAsync(tmpPath, json, cancellationToken).ConfigureAwait(false);
+            File.Move(tmpPath, path, overwrite: true);
+        }
+        finally
+        {
+            try { if (File.Exists(tmpPath)) File.Delete(tmpPath); } catch { /* best-effort */ }
+        }
         _logger.LogInformation("Metadaten gespeichert: {Path}", path);
     }
 
+    /// <inheritdoc />
     public async Task<ContainerMetadata?> LoadAsync(string containerName, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(containerName);
         var path = PathFor(containerName);
         if (!File.Exists(path)) return null;
 
+        string json;
         try
         {
-            var json = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
-            return JsonSerializer.Deserialize<ContainerMetadata>(json, JsonOptions);
+            json = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Metadata-Load fehlgeschlagen für {Name}", containerName);
+            // I/O-Fehler (Lock, Berechtigung) sind transient — Datei behalten.
+            _logger.LogWarning(ex, "Metadata-Read fehlgeschlagen für {Name}", containerName);
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<ContainerMetadata>(json, JsonOptions);
+        }
+        catch (JsonException ex)
+        {
+            // Korrupter Inhalt ist dauerhaft: Datei in Quarantäne verschieben,
+            // damit der Defekt sichtbar wird statt bei jedem Load erneut still
+            // zu scheitern.
+            var corruptPath = path + ".corrupt";
+            try
+            {
+                File.Move(path, corruptPath, overwrite: true);
+                _logger.LogError(ex,
+                    "Metadata-Datei für {Name} ist korrupt und wurde nach {CorruptPath} verschoben",
+                    containerName, corruptPath);
+            }
+            catch (Exception moveEx)
+            {
+                _logger.LogError(moveEx, "Korrupte Metadata-Datei {Path} konnte nicht verschoben werden", path);
+            }
             return null;
         }
     }
 
+    /// <inheritdoc />
     public string? DecryptPassword(byte[]? cipher)
     {
         if (cipher is null || cipher.Length == 0) return null;
@@ -114,13 +164,22 @@ public sealed class ContainerMetadataStore : IContainerMetadataStore
             // Encrypt-Pfad legt UTF-8-Bytes ab — siehe EncryptSecure unten.
             return Encoding.UTF8.GetString(bytes);
         }
+        catch (CryptographicException ex)
+        {
+            // DPAPI-Scope-Mismatch: Metadaten wurden unter einem anderen
+            // Windows-User verschlüsselt oder das Profil wurde migriert.
+            _logger.LogWarning(ex,
+                "DPAPI-Decrypt fehlgeschlagen — Passwort wurde von einem anderen Windows-User gespeichert oder das Profil wurde migriert");
+            return null;
+        }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "DPAPI-Decrypt fehlgeschlagen — falscher User oder Profil-Migration?");
+            _logger.LogError(ex, "DPAPI-Decrypt unerwartet fehlgeschlagen");
             return null;
         }
     }
 
+    /// <inheritdoc />
     public Task DeleteAsync(string containerName, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(containerName);

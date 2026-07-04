@@ -13,4 +13,10 @@ public interface IDialogService
 
     /// <summary>Zeigt eine einfache Info-/Fehlermeldung.</summary>
     void ShowMessage(string message, string title, bool isError = false);
+
+    /// <summary>
+    /// Zeigt eine Ja/Nein-Rückfrage (Default: Nein). Liefert true, wenn der
+    /// User bestätigt hat.
+    /// </summary>
+    bool Confirm(string message, string title);
 }

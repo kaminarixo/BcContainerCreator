@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using BcContainerCreator.Core.Models;
 using BcContainerCreator.Core.PowerShell;
 using Microsoft.Extensions.Logging;
@@ -15,10 +16,18 @@ namespace BcContainerCreator.Core.Containers;
 /// </summary>
 public sealed class ContainerService : IContainerService
 {
+    // Country-Codes der BC-Artifacts sind 2-5 Buchstaben/Ziffern (DE, W1, …).
+    // Version ist 'latest' oder ein numerischer Selektor (26, 26.0, 26.0.1234.0).
+    // Bewusst tolerant gehalten — die Whitelist soll Injection/Vertipper vor dem
+    // Skript-Bau abfangen, keine gültigen Selektoren blockieren.
+    private static readonly Regex CountryPattern = new("^[A-Za-z0-9]{2,5}$", RegexOptions.Compiled);
+    private static readonly Regex VersionPattern = new(@"^[0-9][0-9.]*$", RegexOptions.Compiled);
+
     private readonly IPowerShellRunner _runner;
     private readonly IContainerMetadataStore _metadata;
     private readonly ILogger<ContainerService> _logger;
 
+    /// <summary>Erzeugt den Service mit Runner, Metadata-Store und Logger (DI).</summary>
     public ContainerService(IPowerShellRunner runner, IContainerMetadataStore metadata, ILogger<ContainerService> logger)
     {
         _runner = runner;
@@ -26,6 +35,7 @@ public sealed class ContainerService : IContainerService
         _logger = logger;
     }
 
+    /// <inheritdoc />
     public string BuildCreateScript(ContainerCreateRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -117,6 +127,7 @@ public sealed class ContainerService : IContainerService
         return sb.ToString();
     }
 
+    /// <inheritdoc />
     public async Task<PSResult> CreateContainerAsync(
         ContainerCreateRequest request,
         IProgress<string>? progress = null,
@@ -196,6 +207,7 @@ public sealed class ContainerService : IContainerService
         return result;
     }
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<ArtifactVersionOption>> GetVersionOptionsAsync(
         ArtifactType type,
         string country,
@@ -248,10 +260,19 @@ public sealed class ContainerService : IContainerService
         {
             if (string.IsNullOrWhiteSpace(raw)) continue;
             var parts = raw.Split('|', 2);
-            if (parts.Length < 2) continue;
+            if (parts.Length < 2)
+            {
+                // Format-Drift von Get-BcArtifactUrl diagnostizierbar machen.
+                _logger.LogDebug("Version-Zeile ohne '|'-Trenner übersprungen: {Line}", raw);
+                continue;
+            }
             var major = parts[0].Trim();
             var latest = parts[1].Trim();
-            if (string.IsNullOrEmpty(major) || string.IsNullOrEmpty(latest)) continue;
+            if (string.IsNullOrEmpty(major) || string.IsNullOrEmpty(latest))
+            {
+                _logger.LogDebug("Version-Zeile mit leerem Feld übersprungen: {Line}", raw);
+                continue;
+            }
             options.Add(new ArtifactVersionOption(Selector: major, LatestBuild: latest));
             newestBuild ??= latest;
         }
@@ -264,6 +285,7 @@ public sealed class ContainerService : IContainerService
         return withLatest;
     }
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<ContainerInfo>> ListContainersAsync(CancellationToken cancellationToken = default)
     {
         // 'docker ps -a --format json' liefert pro Zeile EIN JSON-Objekt
@@ -318,6 +340,7 @@ public sealed class ContainerService : IContainerService
         return containers;
     }
 
+    /// <inheritdoc />
     public async Task<bool> StartContainerAsync(string name, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -327,6 +350,7 @@ public sealed class ContainerService : IContainerService
         return result.Success;
     }
 
+    /// <inheritdoc />
     public async Task<bool> StopContainerAsync(string name, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -336,6 +360,7 @@ public sealed class ContainerService : IContainerService
         return result.Success;
     }
 
+    /// <inheritdoc />
     public async Task<bool> RemoveContainerAsync(string name, bool force = true, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -352,6 +377,7 @@ public sealed class ContainerService : IContainerService
         return ok;
     }
 
+    /// <inheritdoc />
     public async Task<string> GetContainerLogsAsync(string name, int tail = 1000, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -390,6 +416,12 @@ public sealed class ContainerService : IContainerService
         return s;
     }
 
+    /// <summary>
+    /// Validiert einen Create-Request, bevor daraus ein Skript gebaut wird.
+    /// Strenger als <see cref="QuoteForDocker"/> (das '.' erlaubt): Validate
+    /// betrifft nur Neuanlagen durch diese App; Start/Stop/Remove müssen auch
+    /// fremde, außerhalb der App erstellte Container mit Punkt im Namen können.
+    /// </summary>
     private static void Validate(ContainerCreateRequest req)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(req.ContainerName);
@@ -413,6 +445,22 @@ public sealed class ContainerService : IContainerService
                     $"Ungültiges Zeichen '{c}' im Containername. Erlaubt: a-z, A-Z, 0-9, -, _.",
                     nameof(req));
             }
+        }
+
+        if (!CountryPattern.IsMatch(req.Country.Trim()))
+        {
+            throw new ArgumentException(
+                $"Ungültiger Country-Code '{req.Country}'. Erwartet: 2-5 Buchstaben/Ziffern (z. B. DE, W1, US).",
+                nameof(req));
+        }
+
+        var version = req.Version.Trim();
+        if (!string.Equals(version, "latest", StringComparison.OrdinalIgnoreCase)
+            && !VersionPattern.IsMatch(version))
+        {
+            throw new ArgumentException(
+                $"Ungültige Version '{req.Version}'. Erwartet: 'latest' oder ein numerischer Selektor (z. B. 26 oder 26.5).",
+                nameof(req));
         }
     }
 

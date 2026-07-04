@@ -100,11 +100,30 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
     /// Passwort als Plain-String — beim Submit zu SecureString konvertiert.
     /// Default ist leer; ein hardcodiertes "P@ssw0rd1" hatten wir früher,
     /// das ist jetzt explizit weg, damit jede Erst-Erstellung einen bewussten
-    /// User-Input erzwingt.
+    /// User-Input erzwingt. Pflicht nur bei NavUserPassword — die Regel läuft
+    /// über die INotifyDataErrorInfo-Pipeline (roter Rahmen), konsistent zu
+    /// den übrigen Feldern.
     /// </summary>
     [ObservableProperty]
+    [NotifyDataErrorInfo]
+    [CustomValidation(typeof(CreateContainerViewModel), nameof(ValidatePasswordRequired))]
     [NotifyCanExecuteChangedFor(nameof(CreateCommand))]
     private string _password = string.Empty;
+
+    /// <summary>
+    /// DataAnnotations-Hook: Passwort ist nur bei NavUserPassword Pflicht.
+    /// Muss public static sein, damit <see cref="CustomValidationAttribute"/>
+    /// die Methode findet.
+    /// </summary>
+    public static ValidationResult? ValidatePasswordRequired(string? password, ValidationContext context)
+    {
+        var vm = (CreateContainerViewModel)context.ObjectInstance;
+        if (vm.SelectedAuthType == AuthType.NavUserPassword && string.IsNullOrEmpty(password))
+        {
+            return new ValidationResult("Passwort ist erforderlich für NavUserPassword.");
+        }
+        return ValidationResult.Success;
+    }
 
     [ObservableProperty]
     private bool _showPassword;
@@ -237,16 +256,11 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
     [RelayCommand(CanExecute = nameof(CanCreate))]
     private async Task CreateAsync()
     {
+        // Deckt auch die Auth-abhängige Passwort-Pflicht ab (CustomValidation).
         ValidateAllProperties();
         if (HasErrors)
         {
             _dialogService.ShowMessage("Bitte alle markierten Felder korrigieren.", "Validierung", isError: true);
-            return;
-        }
-
-        if (SelectedAuthType == AuthType.NavUserPassword && string.IsNullOrEmpty(Password))
-        {
-            _dialogService.ShowMessage("Passwort ist erforderlich für NavUserPassword.", "Validierung", isError: true);
             return;
         }
 
@@ -302,6 +316,17 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
                 _dialogService.ShowMessage(
                     $"Container '{ContainerName}' erstellt.\nDauer: {result.Duration:mm\\:ss}",
                     "Erfolg");
+
+                // Klartext-Passwort nicht länger als nötig im Singleton-VM
+                // halten — nach Erfolg leeren (bei Fehler bleibt es für den
+                // Retry stehen). Reihenfolge ist bewusst Set → ClearErrors:
+                // der Setter re-validiert (NotifyDataErrorInfo) und würde
+                // einen vorherigen ClearErrors sofort überschreiben. Beides
+                // läuft im selben Dispatcher-Frame — der transiente Fehler
+                // wird nie gerendert, das Feld endet garantiert fehlerfrei.
+                Password = string.Empty;
+                ShowPassword = false;
+                ClearErrors(nameof(Password));
             }
             else
             {
@@ -343,10 +368,19 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
         if (_outputBuffer.Length > OutputMaxChars)
         {
             // Vom Anfang abschneiden, damit das Ende (= aktueller Verlauf)
-            // sichtbar bleibt. Pufferung großzügig: erst kürzen, wenn deutlich
-            // über dem Cap, damit nicht jeder Append eine Re-Allocation auslöst.
-            var overflow = _outputBuffer.Length - OutputMaxChars;
-            _outputBuffer.Remove(0, overflow);
+            // sichtbar bleibt — und zwar an der nächsten Zeilengrenze, damit
+            // keine halben Zeilen (z. B. abgeschnittene Fehlermeldungen) im
+            // sichtbaren Output stehen.
+            var cut = _outputBuffer.Length - OutputMaxChars;
+            while (cut < _outputBuffer.Length && _outputBuffer[cut] != '\n')
+            {
+                cut++;
+            }
+            if (cut < _outputBuffer.Length)
+            {
+                cut++; // das '\n' selbst mit entfernen
+            }
+            _outputBuffer.Remove(0, cut);
             _outputBuffer.Insert(0, "[…früherer Output gekürzt…]" + Environment.NewLine);
         }
 
@@ -386,6 +420,11 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
         CancelCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(IsCreateFormEnabled));
     }
+
+    // Passwort-Pflicht hängt vom Auth-Typ ab: beim Wechsel neu bewerten,
+    // damit ein Fehler-Rahmen bei Windows-Auth verschwindet (und umgekehrt).
+    partial void OnSelectedAuthTypeChanged(AuthType value) =>
+        ValidateProperty(Password, nameof(Password));
 
     // Versions-Liste neu laden, wenn ArtifactType oder Country wechselt.
     partial void OnSelectedArtifactTypeChanged(ArtifactType value) => _ = RefreshVersionsAsync();

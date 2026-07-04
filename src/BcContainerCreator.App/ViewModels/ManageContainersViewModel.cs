@@ -15,7 +15,7 @@ namespace BcContainerCreator.App.ViewModels;
 /// ViewModel für den Container-verwalten-Tab. Liefert Liste, Start, Stop,
 /// Löschen, URL-Open. Refresh kann manuell oder automatisch nach jeder Aktion.
 /// </summary>
-public sealed partial class ManageContainersViewModel : ObservableObject
+public sealed partial class ManageContainersViewModel : ObservableObject, IDisposable
 {
     private readonly IContainerService _containerService;
     private readonly IContainerMetadataStore _metadata;
@@ -76,9 +76,12 @@ public sealed partial class ManageContainersViewModel : ObservableObject
         {
             await RefreshAsync();
         }
-        catch
+        catch (Exception ex)
         {
-            // Tick-Fehler dürfen die Timer-Kette nicht killen.
+            // Tick-Fehler dürfen die Timer-Kette nicht killen — aber sichtbar
+            // bleiben müssen sie (RefreshAsync fängt selbst; hier landet nur,
+            // was davor/danach wirft).
+            _logger.LogWarning(ex, "Auto-Refresh-Tick fehlgeschlagen");
         }
     }
 
@@ -148,14 +151,11 @@ public sealed partial class ManageContainersViewModel : ObservableObject
     {
         if (vm is null) return;
 
-        var ok = MessageBox.Show(
+        var confirmed = _dialogService.Confirm(
             $"Container '{vm.Name}' wirklich löschen?\n\nDieser Vorgang kann nicht rückgängig gemacht werden.",
-            "Container löschen",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning,
-            MessageBoxResult.No);
+            "Container löschen");
 
-        if (ok != MessageBoxResult.Yes) return;
+        if (!confirmed) return;
 
         await ExecuteAction(vm, "Löschen", _ => _containerService.RemoveContainerAsync(vm.Name, force: true));
     }
@@ -259,5 +259,16 @@ public sealed partial class ManageContainersViewModel : ObservableObject
         StartCommand.NotifyCanExecuteChanged();
         StopCommand.NotifyCanExecuteChanged();
         RemoveCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// Stoppt den Auto-Refresh-Timer und hängt den Tick-Handler ab. Wird beim
+    /// App-Exit aufgerufen, damit kein Tick mehr in den heruntergefahrenen
+    /// Host läuft.
+    /// </summary>
+    public void Dispose()
+    {
+        _autoRefreshTimer.Stop();
+        _autoRefreshTimer.Tick -= OnAutoRefreshTick;
     }
 }

@@ -163,11 +163,17 @@ public partial class App : Application
 
     protected override async void OnExit(ExitEventArgs e)
     {
+        // async void: Jede hier entkommende Exception würde den Prozess beim
+        // Beenden crashen (unschöner Fehlerdialog statt sauberem Exit) —
+        // deshalb ist der komplette Cleanup-Pfad gekapselt.
         try
         {
             // PowerShell-Runner sauber abräumen — Temp-Param-Files etc.
             if (_host is not null)
             {
+                var manage = _host.Services.GetService<ManageContainersViewModel>();
+                manage?.Dispose();
+
                 var runner = _host.Services.GetService<IPowerShellRunner>();
                 if (runner is not null)
                 {
@@ -177,10 +183,21 @@ public partial class App : Application
                 _host.Dispose();
             }
         }
+        catch (Exception ex)
+        {
+            try { Log.Warning(ex, "Cleanup beim Beenden fehlgeschlagen"); } catch { }
+        }
         finally
         {
-            Log.Information("BC Container Creator beendet");
-            await Log.CloseAndFlushAsync();
+            try
+            {
+                Log.Information("BC Container Creator beendet");
+                await Log.CloseAndFlushAsync();
+            }
+            catch
+            {
+                // Flush-Fehler beim Exit sind nicht mehr meldbar.
+            }
         }
         base.OnExit(e);
     }

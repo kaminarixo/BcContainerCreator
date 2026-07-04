@@ -34,7 +34,7 @@ docs/ROADMAP.md
 - **XML-Doc-Kommentare** an allen Public-APIs in Core.
 - **Keine Magic Strings** — Konstanten in `Core/Constants.cs`.
 - **Records** für Models (`ContainerCreateRequest`, `CheckResult`, `PSResult`).
-- **Passwörter als `SecureString`** — nie als String im PS-Skript. Werden vom Runner über eine ACL-geschützte JSON-Datei in den Subprozess gegeben (siehe `ContainerService.CreateContainerAsync`).
+- **Passwörter als `SecureString`** — nie als String im PS-Skript. Werden vom Runner über eine JSON-Datei im User-only-Runtime-Verzeichnis (`%LOCALAPPDATA%\BcContainerCreator\runtime`, siehe `RuntimePaths`) in den Subprozess gegeben (siehe `ContainerService.CreateContainerAsync`).
 - **Container-Metadaten** — gespeicherte Passwörter werden via DPAPI (CurrentUser) verschlüsselt.
 - **Conventional Commits**: `feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:`.
 
@@ -43,7 +43,7 @@ docs/ROADMAP.md
 - **Core ist UI-frei** — eine spätere CLI muss möglich sein, ohne Refactoring.
 - **Externer PowerShell-Subprozess** — jedes Skript wird in einer frischen `powershell.exe` (Windows PowerShell 5.1) gestartet, headless ohne Konsolenfenster.
 - **Aufrufe serialisiert** — `SemaphoreSlim` im Runner, damit sich stdout-Zeilen aus parallelen Aktionen nicht vermischen.
-- **Parameter über ACL-geschützte Temp-JSON** — keine Argumente in der Prozesszeile, kein Klartext-Passwort in Logs.
+- **Parameter über JSON-Datei im User-only-Runtime-Verzeichnis** (`%LOCALAPPDATA%\BcContainerCreator\runtime` — Default-ACL beschränkt auf aktuellen User) — keine Argumente in der Prozesszeile, kein Klartext-Passwort in Logs.
 - **Streaming-Output** — stdout/stderr werden zeilenweise via `IPowerShellRunner.OutputReceived` an UI/Logs gestreamt; UI marshalt mit `DispatcherProgress<T>`.
 - **Stufenbasierter Progress** — `New-BcContainer` liefert keine Prozent-API; bekannte BcContainerHelper-Statuszeilen werden auf Etappen gemappt.
 - **Fehler nie schlucken** — strukturiert loggen + UI-Feedback (DialogService).
@@ -55,15 +55,15 @@ docs/ROADMAP.md
 - Auth: `Windows` oder `NavUserPassword` (mit `PSCredential`).
 - Docker muss im **Windows-Container-Modus** laufen (CLI-Helper: `DockerCli.exe -SwitchDaemon`).
 - Konflikt: altes `navcontainerhelper`-Modul muss vor `BcContainerHelper`-Nutzung entfernt sein — wird vom Preflight geprüft.
-- `bcartifacts.azureedge.net` muss erreichbar sein (Proxy-Thema in Firmen-Netzwerken).
+- Die Microsoft-Artifact-Endpunkte (`bcartifacts.blob.core.windows.net` bzw. der aktuelle CDN-Host, den `Get-BcArtifactUrl` liefert) müssen erreichbar sein — Proxy-Thema in Firmen-Netzwerken. Hinweis: das frühere `bcartifacts.azureedge.net` (Edgio-CDN) ist seit Anfang 2025 abgeschaltet.
 
 ## Wichtige Dateien
 
 - `src/BcContainerCreator.Core/Containers/ContainerService.cs` — baut den `New-BcContainer`-Aufruf.
 - `src/BcContainerCreator.Core/Containers/ContainerMetadataStore.cs` — Persistenz pro Container, Passwort via DPAPI-CurrentUser.
-- `src/BcContainerCreator.Core/Setup/PreflightCheck.cs` — 12 Checks (Admin, Windows-Edition, PSVersion, ExecutionPolicy, NuGet, PSGallery, Docker × 3, BcContainerHelper, Legacy-Modul, externer PS- + BcContainerHelper-Smoke-Test).
+- `src/BcContainerCreator.Core/Setup/PreflightCheck.cs` — 13 Checks (Admin, Windows-Edition, PSVersion, ExecutionPolicy, NuGet, PSGallery, Docker × 3, BcContainerHelper, BcContainerHelper-Rechte, Legacy-Modul, externer PS- + BcContainerHelper-Smoke-Test).
 - `src/BcContainerCreator.Core/Setup/SetupService.cs` — Fix-Aktionen pro Check.
-- `src/BcContainerCreator.Core/PowerShell/PowerShellRunner.cs` — startet `powershell.exe`-Subprozess pro Aufruf, serialisiert via `SemaphoreSlim`, Parameter über ACL-geschützte Temp-JSON.
+- `src/BcContainerCreator.Core/PowerShell/PowerShellRunner.cs` — startet `powershell.exe`-Subprozess pro Aufruf, serialisiert via `SemaphoreSlim`, Parameter über JSON-Datei im Runtime-Verzeichnis (`RuntimePaths`).
 - `src/BcContainerCreator.App/App.xaml.cs` — DI-Setup, Serilog-Konfiguration, MainWindow-Bootstrap.
 
 ## Build & Test
@@ -71,12 +71,15 @@ docs/ROADMAP.md
 ```powershell
 dotnet build
 dotnet test
+dotnet format --verify-no-changes   # CI-Gate (ci.yml) — vor dem Push lokal 'dotnet format' laufen lassen
 dotnet run --project src/BcContainerCreator.App   # läuft als Standard-User; Admin-Aktionen via UAC-Prompt
 dotnet publish src/BcContainerCreator.App -c Release -r win-x64 -p:PublishSingleFile=true --self-contained false
 ```
 
-## Out of Scope für Phase 1 (siehe ROADMAP)
+CI: `.github/workflows/ci.yml` baut + testet jeden PR (inkl. Format-Check, Release-Build mit `TreatWarningsAsErrors`). Releases laufen über `.github/workflows/release.yml` bei Tag-Push (siehe `docs/RELEASE.md`).
 
-- Container-Verwaltung (Start/Stop/Remove)
-- Profile/Presets, Settings-Tab, Theme-Switching
-- Auto-Updater, Installer
+## Funktionsumfang & Scope
+
+Bereits umgesetzt (nicht mehr "out of scope"): Container-Verwaltung (Liste, Start, Stop, Löschen, Logs, Zugangsdaten-Popup), Settings-Tab, Installer + Release-Workflow.
+
+Noch offen (siehe `docs/ROADMAP.md`): Profile/Presets, Health-Check pro Container, Auto-Update-Prüfung, Theme-Switching, CLI-Modus, Code-Signing des Installers.

@@ -7,10 +7,12 @@ using Microsoft.Extensions.Logging;
 namespace BcContainerCreator.Core.Setup;
 
 /// <summary>
-/// Standard-Implementierung mit folgenden Checks (in dieser Reihenfolge):
-/// Admin-Rechte, PowerShell-Version, ExecutionPolicy, NuGet-Provider,
-/// PSGallery-Trust, Docker installiert, Docker läuft, Docker-Modus,
-/// BcContainerHelper installiert, Legacy-Modul nicht installiert.
+/// Standard-Implementierung mit folgenden 13 Checks (in dieser Reihenfolge):
+/// Admin-Rechte, Windows-Edition, PowerShell-Version, ExecutionPolicy,
+/// NuGet-Provider, PSGallery-Trust, Docker installiert, Docker läuft,
+/// Docker-Modus, BcContainerHelper installiert, BcContainerHelper-Rechte,
+/// Legacy-Modul nicht installiert, externer PowerShell-/BcContainerHelper-
+/// Smoke-Test.
 /// </summary>
 public sealed class PreflightCheck : IPreflightCheck
 {
@@ -35,6 +37,7 @@ public sealed class PreflightCheck : IPreflightCheck
         "external-ps-smoketest"
     ];
 
+    /// <summary>Erzeugt den Check mit Runner, Docker-Service und Logger (DI).</summary>
     public PreflightCheck(IPowerShellRunner runner, IDockerService docker, ILogger<PreflightCheck> logger)
     {
         _runner = runner;
@@ -42,8 +45,10 @@ public sealed class PreflightCheck : IPreflightCheck
         _logger = logger;
     }
 
+    /// <inheritdoc />
     public IReadOnlyList<string> GetCheckIds() => CheckIds;
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<CheckResult>> RunAllAsync(
         IProgress<CheckResult>? progress = null,
         CancellationToken cancellationToken = default)
