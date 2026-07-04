@@ -14,7 +14,12 @@ public sealed class FakePowerShellRunner : IPowerShellRunner
 
     public event EventHandler<PowerShellOutputEventArgs>? OutputReceived;
 
-    /// <summary>Setzt für ein Skript-Substring eine Antwort.</summary>
+    /// <summary>
+    /// Setzt für ein Skript-Substring eine Antwort. Bei mehreren passenden
+    /// Patterns gewinnt deterministisch das LÄNGSTE konfigurierte Substring
+    /// (Longest-Match) — die Iterations-Reihenfolge eines
+    /// <see cref="ConcurrentDictionary{TKey,TValue}"/> wäre undefiniert.
+    /// </summary>
     public FakePowerShellRunner WhenScriptContains(string substring, Func<PSResult> responder)
     {
         _responders[substring] = responder;
@@ -30,12 +35,14 @@ public sealed class FakePowerShellRunner : IPowerShellRunner
     {
         Calls.Add((script, variables));
 
-        foreach (var (key, responder) in _responders)
+        var responder = _responders
+            .Where(kvp => script.Contains(kvp.Key, StringComparison.Ordinal))
+            .OrderByDescending(kvp => kvp.Key.Length)
+            .Select(kvp => kvp.Value)
+            .FirstOrDefault();
+        if (responder is not null)
         {
-            if (script.Contains(key, StringComparison.Ordinal))
-            {
-                return Task.FromResult(responder());
-            }
+            return Task.FromResult(responder());
         }
 
         // Default: leeres Erfolgs-Resultat.

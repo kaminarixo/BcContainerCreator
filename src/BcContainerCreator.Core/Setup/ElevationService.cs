@@ -12,11 +12,19 @@ namespace BcContainerCreator.Core.Setup;
 public sealed class ElevationService : IElevationService
 {
     private readonly ILogger<ElevationService> _logger;
+    private readonly Func<ProcessStartInfo, Process?> _startProcess;
 
-    /// <summary>Erzeugt den Service mit Logger (DI).</summary>
-    public ElevationService(ILogger<ElevationService> logger)
+    /// <summary>
+    /// Erzeugt den Service (DI). <paramref name="startProcess"/> ist ein
+    /// Test-Hook analog zur Admin-Probe im SetupService — Default ist das
+    /// echte <see cref="Process.Start(ProcessStartInfo)"/>.
+    /// </summary>
+    public ElevationService(
+        ILogger<ElevationService> logger,
+        Func<ProcessStartInfo, Process?>? startProcess = null)
     {
         _logger = logger;
+        _startProcess = startProcess ?? Process.Start;
     }
 
     /// <inheritdoc />
@@ -40,7 +48,7 @@ public sealed class ElevationService : IElevationService
 
         try
         {
-            using var process = Process.Start(psi);
+            using var process = _startProcess(psi);
             if (process is null)
             {
                 _logger.LogWarning("Process.Start lieferte null für {File}", fileName);

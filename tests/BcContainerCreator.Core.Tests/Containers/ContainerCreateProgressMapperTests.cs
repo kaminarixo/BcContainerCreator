@@ -1,7 +1,7 @@
 using BcContainerCreator.Core.Containers;
 using FluentAssertions;
 
-namespace BcContainerCreator.Core.Tests.App;
+namespace BcContainerCreator.Core.Tests.Containers;
 
 /// <summary>
 /// Tests gegen den echten <see cref="ContainerCreateProgressMapper"/> aus
