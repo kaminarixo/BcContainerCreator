@@ -316,6 +316,14 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
                 _dialogService.ShowMessage(
                     $"Container '{ContainerName}' erstellt.\nDauer: {result.Duration:mm\\:ss}",
                     "Erfolg");
+
+                // Klartext-Passwort nicht länger als nötig im Singleton-VM
+                // halten — nach Erfolg leeren (bei Fehler bleibt es für den
+                // Retry stehen). ClearErrors, damit das geleerte Pflichtfeld
+                // nicht sofort rot markiert wird.
+                Password = string.Empty;
+                ShowPassword = false;
+                ClearErrors(nameof(Password));
             }
             else
             {

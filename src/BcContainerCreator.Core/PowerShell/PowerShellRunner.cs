@@ -43,10 +43,7 @@ public sealed class PowerShellRunner : IPowerShellRunner
     public PowerShellRunner(ILogger<PowerShellRunner> logger)
     {
         _logger = logger;
-        _runtimeDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "BcContainerCreator", "runtime");
-        Directory.CreateDirectory(_runtimeDir);
+        _runtimeDir = RuntimePaths.GetRuntimeDirectory();
     }
 
     public Task InitializeAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;

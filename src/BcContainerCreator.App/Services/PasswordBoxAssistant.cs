@@ -13,6 +13,14 @@ namespace BcContainerCreator.App.Services;
 ///   <item><see cref="PlainPasswordProperty"/> — als Plain-String binden (für Show/Hide-Toggle)</item>
 /// </list>
 /// Zum Aktivieren <c>BindPassword="True"</c> setzen.
+/// <para>
+/// <see cref="PlainPasswordProperty"/> ist ein bewusster Trade-off: der
+/// Show/Hide-Toggle braucht in WPF praktisch einen Klartext-String
+/// (TextBox.Text). Aufwendige String-Zeroing-Tricks wären Scheinsicherheit
+/// (String-Interning, GC-Kopien) — stattdessen minimiert das
+/// CreateContainerViewModel die Lebensdauer, indem es das Passwort nach
+/// erfolgreichem Create leert.
+/// </para>
 /// </summary>
 public static class PasswordBoxAssistant
 {
