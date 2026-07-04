@@ -319,8 +319,11 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
 
                 // Klartext-Passwort nicht länger als nötig im Singleton-VM
                 // halten — nach Erfolg leeren (bei Fehler bleibt es für den
-                // Retry stehen). ClearErrors, damit das geleerte Pflichtfeld
-                // nicht sofort rot markiert wird.
+                // Retry stehen). Reihenfolge ist bewusst Set → ClearErrors:
+                // der Setter re-validiert (NotifyDataErrorInfo) und würde
+                // einen vorherigen ClearErrors sofort überschreiben. Beides
+                // läuft im selben Dispatcher-Frame — der transiente Fehler
+                // wird nie gerendert, das Feld endet garantiert fehlerfrei.
                 Password = string.Empty;
                 ShowPassword = false;
                 ClearErrors(nameof(Password));

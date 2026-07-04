@@ -89,6 +89,9 @@ public sealed partial class ContainerCredentialsViewModel : ObservableObject
 
         // Zwischenablage nach 30 s automatisch leeren — aber nur, wenn sie
         // dann noch das Passwort enthält (fremde Inhalte nie überschreiben).
+        // Der Timer überlebt bewusst ein Schließen des Fensters: das Clipboard
+        // soll auch dann geleert werden. Er feuert genau einmal, stoppt sich
+        // selbst und gibt damit das VM frei — kein unbegrenzter Leak.
         _lastCopiedPassword = PasswordPlain;
         ClipboardHint = "Passwort kopiert — Zwischenablage wird in 30 s geleert.";
         _clipboardClearTimer?.Stop();

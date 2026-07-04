@@ -9,7 +9,7 @@
 ; unbedingtes #define würde den CLI-Wert überschreiben. Der Fallback greift
 ; nur bei direktem ISCC-Aufruf ohne Build-Skript.
 #ifndef MyAppVersion
-  #define MyAppVersion   "0.0.0-dev"
+  #define MyAppVersion   "0.0.0"
 #endif
 #define MyAppPublisher   "Thomas Scharf"
 #define MyAppURL         "https://github.com/kaminarixo/BcContainerCreator"
