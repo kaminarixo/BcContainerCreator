@@ -35,4 +35,15 @@ public sealed class DialogService : IDialogService
             MessageBoxButton.OK,
             isError ? MessageBoxImage.Error : MessageBoxImage.Information);
     }
+
+    public bool Confirm(string message, string title)
+    {
+        var result = MessageBox.Show(
+            message,
+            title,
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning,
+            MessageBoxResult.No);
+        return result == MessageBoxResult.Yes;
+    }
 }

@@ -1,4 +1,3 @@
-using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Windows;
 using BcContainerCreator.App.ViewModels;
@@ -13,15 +12,36 @@ public partial class ContainerLogsWindow : Window
         DataContext = viewModel;
         Loaded += OnLoaded;
         viewModel.PropertyChanged += OnVmPropertyChanged;
+        Closed += OnClosed;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // async void: Exceptions hier würden ungefangen im Dispatcher landen.
+        // LoadAsync fängt selbst, der Guard deckt den Rest (z. B. Scroll) ab.
+        try
+        {
+            if (DataContext is ContainerLogsViewModel vm)
+            {
+                await vm.LoadAsync();
+                ScrollLogToEnd();
+            }
+        }
+        catch
+        {
+            // Fehler zeigt das ViewModel über StatusText an.
+        }
+    }
+
+    private void OnClosed(object? sender, EventArgs e)
+    {
+        // Symmetrisch zu den Subscriptions im Konstruktor abhängen.
         if (DataContext is ContainerLogsViewModel vm)
         {
-            await vm.LoadAsync();
-            ScrollLogToEnd();
+            vm.PropertyChanged -= OnVmPropertyChanged;
         }
+        Loaded -= OnLoaded;
+        Closed -= OnClosed;
     }
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)

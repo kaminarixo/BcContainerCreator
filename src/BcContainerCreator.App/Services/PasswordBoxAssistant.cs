@@ -66,10 +66,10 @@ public static class PasswordBoxAssistant
             return;
         }
 
-        if ((bool)e.OldValue)
-        {
-            pb.PasswordChanged -= OnPasswordChanged;
-        }
+        // Immer erst abhängen — idempotent, unabhängig davon, was e.OldValue
+        // meldet. Verhindert Doppel-Subscriptions bei ungewöhnlichen
+        // Property-Übergängen (z. B. Style-/Template-Wechsel).
+        pb.PasswordChanged -= OnPasswordChanged;
         if ((bool)e.NewValue)
         {
             pb.PasswordChanged += OnPasswordChanged;
