@@ -183,6 +183,24 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
     [ObservableProperty]
     private bool _isCreateProgressIndeterminate;
 
+    /// <summary>
+    /// Fortschritts-Modus für das Windows-Taskbar-Icon: Marquee bis zur ersten
+    /// erkannten Stage, danach normaler Fortschritt, im Idle aus.
+    /// </summary>
+    public System.Windows.Shell.TaskbarItemProgressState TaskbarProgressState =>
+        !IsRunning ? System.Windows.Shell.TaskbarItemProgressState.None
+        : IsCreateProgressIndeterminate ? System.Windows.Shell.TaskbarItemProgressState.Indeterminate
+        : System.Windows.Shell.TaskbarItemProgressState.Normal;
+
+    /// <summary>Fortschritt 0..1 für das Windows-Taskbar-Icon.</summary>
+    public double TaskbarProgressValue => CreateProgressPercent / 100d;
+
+    partial void OnCreateProgressPercentChanged(int value) =>
+        OnPropertyChanged(nameof(TaskbarProgressValue));
+
+    partial void OnIsCreateProgressIndeterminateChanged(bool value) =>
+        OnPropertyChanged(nameof(TaskbarProgressState));
+
     public CreateContainerViewModel(
         IContainerService containerService,
         IDialogService dialogService,
@@ -419,6 +437,7 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
         CreateCommand.NotifyCanExecuteChanged();
         CancelCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(IsCreateFormEnabled));
+        OnPropertyChanged(nameof(TaskbarProgressState));
     }
 
     // Passwort-Pflicht hängt vom Auth-Typ ab: beim Wechsel neu bewerten,

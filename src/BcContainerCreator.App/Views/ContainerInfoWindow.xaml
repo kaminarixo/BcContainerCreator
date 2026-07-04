@@ -82,6 +82,17 @@
                     </StackPanel>
                 </Border>
 
+                <!-- DPAPI-Konto-Mismatch: Passwort existiert, gehört aber einem
+                     anderen Windows-Konto — erklären statt kommentarlos ausblenden. -->
+                <Border Style="{StaticResource Card}"
+                        Background="#FFF6E5"
+                        BorderBrush="{StaticResource BrandOrange}"
+                        Margin="0,0,0,12"
+                        Visibility="{Binding IsPasswordLocked, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="{Binding PasswordLockedMessage}"
+                               TextWrapping="Wrap" />
+                </Border>
+
                 <Border Style="{StaticResource Card}" Margin="0,0,0,12"
                         Visibility="{Binding HasPassword, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
@@ -127,6 +138,7 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="160" />
@@ -138,8 +150,30 @@
                         <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Country}" Margin="0,6,0,0" />
                         <TextBlock Grid.Row="2" Grid.Column="0" Text="Version" FontWeight="SemiBold" Foreground="{StaticResource TextMuted}" Margin="0,6,0,0" />
                         <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding VersionSelector}" Margin="0,6,0,0" />
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Erstellt von" FontWeight="SemiBold" Foreground="{StaticResource TextMuted}" Margin="0,6,0,0" />
+                        <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,6,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="{Binding CreatedBy}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding CreatedBy}" Value="">
+                                            <Setter Property="Text" Value="unbekannt (ältere App-Version)" />
+                                            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
                     </Grid>
                 </Border>
+
+                <!-- Sicherheits-Hinweis: gespeicherte Passwörter sind an das
+                     Windows-Konto gebunden (DPAPI CurrentUser). -->
+                <TextBlock Text="Gespeicherte Passwörter sind verschlüsselt an das Windows-Konto gebunden, das den Container erstellt hat — andere Benutzer dieses Rechners können sie nicht auslesen."
+                           FontSize="11"
+                           Foreground="{StaticResource TextMuted}"
+                           TextWrapping="Wrap"
+                           Margin="4,0,4,0" />
             </StackPanel>
         </StackPanel>
     </ScrollViewer>

@@ -201,6 +201,50 @@ public class ContainerMetadataStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAndLoad_RoundtripsCreatedBy()
+    {
+        var sut = CreateSut();
+        await sut.SaveAsync(
+            "c1", DateTimeOffset.UtcNow, AuthType.NavUserPassword,
+            "u", MakeSecureString("pwd"),
+            ArtifactType.OnPrem, "DE", "latest", null, "url",
+            createdBy: @"FIRMA\thomas");
+
+        var loaded = await sut.LoadAsync("c1");
+
+        loaded!.CreatedBy.Should().Be(@"FIRMA\thomas");
+    }
+
+    [Fact]
+    public async Task LoadAsync_LegacyFileWithoutCreatedBy_LoadsWithNull()
+    {
+        // Abwärtskompatibilität: Metadaten-Dateien älterer App-Versionen haben
+        // kein createdBy-Feld — Laden darf nicht scheitern, CreatedBy ist null.
+        var sut = CreateSut();
+        var legacyJson = """
+            {
+              "name": "altbestand",
+              "createdAt": "2026-01-15T10:00:00+00:00",
+              "authType": "NavUserPassword",
+              "username": "admin",
+              "passwordCipher": null,
+              "artifactType": "OnPrem",
+              "country": "DE",
+              "versionSelector": "26",
+              "resolvedBuild": null,
+              "webClientUrl": "http://altbestand/BC?tenant=default"
+            }
+            """;
+        await File.WriteAllTextAsync(Path.Combine(_root, "altbestand.json"), legacyJson);
+
+        var loaded = await sut.LoadAsync("altbestand");
+
+        loaded.Should().NotBeNull();
+        loaded!.Username.Should().Be("admin");
+        loaded.CreatedBy.Should().BeNull();
+    }
+
+    [Fact]
     public void DecryptPassword_GarbageCipher_ReturnsNull()
     {
         // Zufällige Bytes sind kein gültiger DPAPI-Blob → CryptographicException

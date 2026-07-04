@@ -192,6 +192,9 @@ public sealed class ContainerService : IContainerService
                     versionSelector: request.Version,
                     resolvedBuild: null,
                     webClientUrl: $"http://{request.ContainerName}/BC?tenant=default",
+                    // Windows-Konto festhalten, an das die DPAPI-Verschlüsselung
+                    // gebunden ist — bei lokalen Konten ist die "Domäne" der Rechnername.
+                    createdBy: $@"{Environment.UserDomainName}\{Environment.UserName}",
                     cancellationToken: cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
