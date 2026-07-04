@@ -31,7 +31,7 @@
                     </TextBlock>
                     <TextBlock Text="Voraussetzungen" Style="{StaticResource PageTitle}" />
                     <TextBlock Style="{StaticResource PageSubtitle}" MaxWidth="640" HorizontalAlignment="Left">
-                        <Run Text="12 Checks. Wenn alles grün ist, läuft" />
+                        <Run Text="{Binding TotalCheckCount, Mode=OneWay}" /><Run Text=" Checks. Wenn alles grün ist, läuft" />
                         <Run Text="New-BcContainer" FontFamily="{StaticResource MonoFont}" />
                         <Run Text="reproduzierbar durch." />
                     </TextBlock>
