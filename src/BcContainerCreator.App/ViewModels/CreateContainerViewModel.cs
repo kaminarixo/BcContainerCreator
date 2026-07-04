@@ -100,11 +100,30 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
     /// Passwort als Plain-String — beim Submit zu SecureString konvertiert.
     /// Default ist leer; ein hardcodiertes "P@ssw0rd1" hatten wir früher,
     /// das ist jetzt explizit weg, damit jede Erst-Erstellung einen bewussten
-    /// User-Input erzwingt.
+    /// User-Input erzwingt. Pflicht nur bei NavUserPassword — die Regel läuft
+    /// über die INotifyDataErrorInfo-Pipeline (roter Rahmen), konsistent zu
+    /// den übrigen Feldern.
     /// </summary>
     [ObservableProperty]
+    [NotifyDataErrorInfo]
+    [CustomValidation(typeof(CreateContainerViewModel), nameof(ValidatePasswordRequired))]
     [NotifyCanExecuteChangedFor(nameof(CreateCommand))]
     private string _password = string.Empty;
+
+    /// <summary>
+    /// DataAnnotations-Hook: Passwort ist nur bei NavUserPassword Pflicht.
+    /// Muss public static sein, damit <see cref="CustomValidationAttribute"/>
+    /// die Methode findet.
+    /// </summary>
+    public static ValidationResult? ValidatePasswordRequired(string? password, ValidationContext context)
+    {
+        var vm = (CreateContainerViewModel)context.ObjectInstance;
+        if (vm.SelectedAuthType == AuthType.NavUserPassword && string.IsNullOrEmpty(password))
+        {
+            return new ValidationResult("Passwort ist erforderlich für NavUserPassword.");
+        }
+        return ValidationResult.Success;
+    }
 
     [ObservableProperty]
     private bool _showPassword;
@@ -237,16 +256,11 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
     [RelayCommand(CanExecute = nameof(CanCreate))]
     private async Task CreateAsync()
     {
+        // Deckt auch die Auth-abhängige Passwort-Pflicht ab (CustomValidation).
         ValidateAllProperties();
         if (HasErrors)
         {
             _dialogService.ShowMessage("Bitte alle markierten Felder korrigieren.", "Validierung", isError: true);
-            return;
-        }
-
-        if (SelectedAuthType == AuthType.NavUserPassword && string.IsNullOrEmpty(Password))
-        {
-            _dialogService.ShowMessage("Passwort ist erforderlich für NavUserPassword.", "Validierung", isError: true);
             return;
         }
 
@@ -386,6 +400,11 @@ public sealed partial class CreateContainerViewModel : ObservableValidator
         CancelCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(IsCreateFormEnabled));
     }
+
+    // Passwort-Pflicht hängt vom Auth-Typ ab: beim Wechsel neu bewerten,
+    // damit ein Fehler-Rahmen bei Windows-Auth verschwindet (und umgekehrt).
+    partial void OnSelectedAuthTypeChanged(AuthType value) =>
+        ValidateProperty(Password, nameof(Password));
 
     // Versions-Liste neu laden, wenn ArtifactType oder Country wechselt.
     partial void OnSelectedArtifactTypeChanged(ArtifactType value) => _ = RefreshVersionsAsync();

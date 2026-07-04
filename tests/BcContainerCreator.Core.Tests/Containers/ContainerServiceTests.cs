@@ -153,6 +153,58 @@ public class ContainerServiceTests
         act.Should().Throw<ArgumentException>().WithMessage("*Ungültiges Zeichen*");
     }
 
+    [Theory]
+    [InlineData("DE'; Get-Process; '")]           // Injection-Versuch via Quote-Ausbruch
+    [InlineData("DE\"; Remove-Item x; \"")]        // Injection-Versuch via Double-Quote
+    [InlineData("Deutschland")]                    // zu lang
+    [InlineData("D")]                              // zu kurz
+    [InlineData("D E")]                            // Leerzeichen
+    public void BuildCreateScript_InvalidCountry_Throws(string country)
+    {
+        var sut = CreateSut(out _);
+        var req = new ContainerCreateRequest(
+            "c", ArtifactType.OnPrem, country, "latest",
+            AuthType.Windows, "u", new SecureString());
+
+        var act = () => sut.BuildCreateScript(req);
+
+        act.Should().Throw<ArgumentException>().WithMessage("*Country-Code*");
+    }
+
+    [Theory]
+    [InlineData("26'; Get-Process; '")]
+    [InlineData("neueste")]
+    [InlineData("v26")]
+    public void BuildCreateScript_InvalidVersion_Throws(string version)
+    {
+        var sut = CreateSut(out _);
+        var req = new ContainerCreateRequest(
+            "c", ArtifactType.OnPrem, "DE", version,
+            AuthType.Windows, "u", new SecureString());
+
+        var act = () => sut.BuildCreateScript(req);
+
+        act.Should().Throw<ArgumentException>().WithMessage("*Version*");
+    }
+
+    [Theory]
+    [InlineData("latest")]
+    [InlineData("LATEST")]
+    [InlineData("26")]
+    [InlineData("26.5")]
+    [InlineData("26.0.12345.67890")]
+    public void BuildCreateScript_ValidVersionSelectors_DoNotThrow(string version)
+    {
+        var sut = CreateSut(out _);
+        var req = new ContainerCreateRequest(
+            "c", ArtifactType.OnPrem, "DE", version,
+            AuthType.Windows, "u", new SecureString());
+
+        var act = () => sut.BuildCreateScript(req);
+
+        act.Should().NotThrow();
+    }
+
     [Fact]
     public async Task CreateContainerAsync_PassesPasswordAsSecureString_NotInScript()
     {
