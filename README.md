@@ -164,7 +164,7 @@ pwsh build/build-installer.ps1
 
 Voraussetzung: [Inno Setup 6](https://jrsoftware.org/isinfo.php) muss installiert sein (`winget install --exact --id JRSoftware.InnoSetup --silent`). PDB- und XML-Dokumentationsdateien werden vor dem Bundling automatisch entfernt.
 
-→ `dist/BcContainerCreator-Setup-<version>.exe` (≈12 MB)
+→ `dist/BcContainerCreator-Setup-<version>.exe` (≈3 MB)
 
 ---
 
